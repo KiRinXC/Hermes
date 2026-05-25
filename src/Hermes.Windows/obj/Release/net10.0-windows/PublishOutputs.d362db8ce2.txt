@@ -1,0 +1,5 @@
+D:\Code\Demo\AITranslator\AITranslator.Windows.exe
+D:\Code\Demo\AITranslator\AITranslator.Windows.dll
+D:\Code\Demo\AITranslator\AITranslator.Windows.deps.json
+D:\Code\Demo\AITranslator\AITranslator.Windows.runtimeconfig.json
+D:\Code\Demo\AITranslator\AITranslator.Windows.pdb

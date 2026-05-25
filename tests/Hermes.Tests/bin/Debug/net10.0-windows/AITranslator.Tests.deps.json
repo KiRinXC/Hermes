@@ -1,0 +1,39 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v10.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v10.0": {
+      "AITranslator.Tests/1.0.0": {
+        "dependencies": {
+          "AITranslator.Windows": "1.0.0"
+        },
+        "runtime": {
+          "AITranslator.Tests.dll": {}
+        }
+      },
+      "AITranslator.Windows/1.0.0": {
+        "runtime": {
+          "AITranslator.Windows.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      }
+    }
+  },
+  "libraries": {
+    "AITranslator.Tests/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "AITranslator.Windows/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}

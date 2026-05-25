@@ -1,0 +1,20 @@
+<DrawingImage xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation">
+    <DrawingImage.Drawing>
+        <DrawingGroup>
+            <GeometryDrawing Brush="#2563EB">
+                <GeometryDrawing.Geometry>
+                    <EllipseGeometry Center="16,16" RadiusX="15" RadiusY="15" />
+                </GeometryDrawing.Geometry>
+            </GeometryDrawing>
+            <GeometryDrawing Brush="White">
+                <GeometryDrawing.Geometry>
+                    <GeometryGroup>
+                        <RectangleGeometry Rect="8,8,16,3" />
+                        <RectangleGeometry Rect="14,8,3,16" />
+                        <RectangleGeometry Rect="10,21,12,3" />
+                    </GeometryGroup>
+                </GeometryDrawing.Geometry>
+            </GeometryDrawing>
+        </DrawingGroup>
+    </DrawingImage.Drawing>
+</DrawingImage>
