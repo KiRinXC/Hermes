@@ -370,7 +370,7 @@
         <Setter Property="Height" Value="24"/>
         <Setter Property="MinWidth" Value="44"/>
         <Setter Property="MinHeight" Value="24"/>
-        <Setter Property="Background" Value="{DynamicResource Brush.BorderStrong}"/>
+        <Setter Property="Background" Value="#FF2C2C2E"/>
         <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border}"/>
         <Setter Property="Foreground" Value="{DynamicResource Brush.Surface}"/>
         <Setter Property="Cursor" Value="Hand"/>
@@ -406,7 +406,7 @@
                     </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsChecked" Value="True">
-                            <Setter TargetName="Track" Property="Background" Value="{DynamicResource Brush.Accent}"/>
+                            <Setter TargetName="Track" Property="Background" Value="{DynamicResource Brush.BrandGlow}"/>
                             <Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource Brush.Accent}"/>
                             <Setter TargetName="Thumb" Property="Background" Value="{DynamicResource Brush.TextOnAccent}"/>
                             <Trigger.EnterActions>

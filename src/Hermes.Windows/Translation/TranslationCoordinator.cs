@@ -195,7 +195,8 @@ public sealed class TranslationCoordinator
             selection.Text,
             _settingsService.Current.Translation.Style,
             _settingsService.Current.Translation.TargetLanguage,
-            _settingsService.Current.Translation.PreserveFormatting);
+            _settingsService.Current.Translation.PreserveFormatting,
+            _settingsService.Current.Translation.SystemPrompt);
 
         var result = await _translationService.TranslateAsync(request, requestToken);
 

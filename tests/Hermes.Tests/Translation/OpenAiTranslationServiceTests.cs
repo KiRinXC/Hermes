@@ -9,6 +9,7 @@ public static class OpenAiTranslationServiceTests
         suite.Add("builds responses URI", BuildsResponsesUri);
         suite.Add("extracts output_text", ExtractsOutputText);
         suite.Add("extracts output array text", ExtractsOutputArrayText);
+        suite.Add("uses custom prompt instructions", UsesCustomPromptInstructions);
     }
 
     private static void BuildsResponsesUri()
@@ -28,5 +29,16 @@ public static class OpenAiTranslationServiceTests
         var text = OpenAiTranslationService.ExtractOutputText(
             """{"output":[{"content":[{"type":"output_text","text":"你好"}]}]}""");
         TestAssert.Equal("你好", text);
+    }
+
+    private static void UsesCustomPromptInstructions()
+    {
+        var instructions = TranslationPromptBuilder.BuildInstructions(
+            "literal",
+            "Simplified Chinese",
+            preserveFormatting: false,
+            customPrompt: "请用短句翻译，并保留产品名。");
+
+        TestAssert.Equal("请用短句翻译，并保留产品名。", instructions);
     }
 }

@@ -30,6 +30,8 @@ public sealed class TranslationSettings
 
     public string TargetLanguage { get; set; } = "Simplified Chinese";
 
+    public string SystemPrompt { get; set; } = Hermes.Windows.Translation.TranslationPromptBuilder.DefaultSystemPrompt;
+
     public string Style { get; set; } = "natural";
 
     public int MaxCharacters { get; set; } = 5000;

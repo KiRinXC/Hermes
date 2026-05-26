@@ -25,4 +25,12 @@ public static class TestAssert
             throw new InvalidOperationException($"Expected '{expected}', got '{actual}'.");
         }
     }
+
+    public static void Contains(string expectedSubstring, string actual)
+    {
+        if (!actual.Contains(expectedSubstring, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException($"Expected '{actual}' to contain '{expectedSubstring}'.");
+        }
+    }
 }

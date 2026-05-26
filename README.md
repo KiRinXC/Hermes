@@ -146,9 +146,10 @@ D:\Apps\Hermes\
 - Provider：OpenAI 或 OpenAI-compatible
 - Base URL：默认 `https://api.openai.com/v1`
 - API Key：使用 Windows DPAPI 加密存储
-- Model：默认 `gpt-4.1-mini`，可在设置中修改
+- Model：默认 `gpt-4.1-mini`，可在设置中手动填写
+- Prompt：可在设置中编辑提交给模型的系统提示词，默认面向英文到简体中文翻译
 
-请求会发送到 `{Base URL}/responses`。
+翻译请求会发送到 `{Base URL}/responses`。
 
 ## 隐私说明
 

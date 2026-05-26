@@ -122,9 +122,13 @@ ClipboardSelectionProvider 读取当前剪贴板文本
 
 `Shell/SettingsWindow` 是设置入口，负责 API、翻译、触发、UI、隐私、开机启动等配置的展示和保存。设置窗口由托盘菜单或翻译卡片中的设置动作打开。
 
+当前设置窗口采用固定 `800 × 600` 的无边框 WPF 壳，窗口内部按 Header、Body、Footer 三段式组织。Header 包含紧凑品牌区、可点击录制的快捷键键帽和五个文字页签；Body 使用圆角分组卡片承载常规、翻译、外观、隐私和高级诊断；Footer 固定放置保存和状态反馈。窗口打开时执行淡入与缩放动效，并尝试启用 Windows 11 Mica 背景材质，系统不支持时自动退回深色半透明背景。
+
+设置页控件已从传统表单升级为更轻量的交互形态：布尔项使用设置页本地 ToggleSwitch，外观规格使用 Slider，主题使用分段选择器，API Key 支持显示/隐藏，右上角键帽按钮支持录制组合键。测试连接作为 API 凭据上下文动作放在 API Key 行右侧，清空历史作为高级诊断上下文动作放在高级页内。翻译页的模型字段保持为手动输入框，避免模型选择控件在紧凑布局中截断；目标语言固定为中文，不再在设置页展示。翻译页还提供可编辑的系统 Prompt，空白时回退到默认英文到简体中文翻译提示词。设置窗口内置本地 TextBox、PasswordBox、ComboBox、ComboBoxItem、FooterButton、Tab、ToggleSwitch、Slider 和滚动条样式，避免设置页回落到原生控件质感。`SettingsWindowOptions` 用于分离设置项显示文案和持久化值，避免中文高级文案写入配置文件。`SettingsWindowThemePalettes` 负责设置窗口自身的浅色/深色调色板，外观页切换主题时会替换本地 brush 资源；设置窗口样式使用 DynamicResource 引用这些 brush，因此浅色/深色/跟随系统会立即作用于设置窗口自身。浅色主题下开关关闭轨道和滑块未选轨道使用可读灰阶，避免黑色控件在浅色面板中过重或不可见。
+
 ### Tray
 
-`TrayService` 维护系统托盘图标和菜单。当前入口包括暂停/恢复、翻译剪贴板、设置、历史提示和退出。托盘是用户无需打开主窗口即可控制应用的主要入口。
+`TrayService` 维护系统托盘图标和菜单。左键单击托盘图标会直接打开设置窗口；右键菜单保留暂停/恢复、翻译剪贴板、设置和退出，不再显示历史入口。托盘是用户无需打开主窗口即可控制应用的主要入口。
 
 ### Input
 
@@ -153,7 +157,7 @@ ClipboardSelectionProvider 读取当前剪贴板文本
 
 翻译模块封装 OpenAI 兼容 Responses API。
 
-- `TranslationPromptBuilder` 构造英文到简体中文翻译指令。
+- `TranslationPromptBuilder` 构造英文到简体中文翻译指令，并提供可配置 Prompt 的默认值。
 - `OpenAiTranslationService` 读取设置和密钥，发送请求，解析 `output_text` 或 `output` 内容。
 - `TranslationCoordinator` 串联选区、翻译、历史和 UI，是翻译工作流协调层。
 
@@ -166,11 +170,11 @@ ClipboardSelectionProvider 读取当前剪贴板文本
 - `SettingsService` 读写 `%LOCALAPPDATA%\Hermes\settings.json`。
 - `DpapiSecretStorageService` 使用 Windows DPAPI 加密保存 API Key 到 `secrets.dat`。
 - `StartupRegistrationService` 管理开机启动注册。
-- `AppSettings` 定义 API、翻译、触发、UI、隐私和启动设置。
+- `AppSettings` 定义 API、翻译、触发、UI、隐私和启动设置，其中翻译设置包含可编辑系统 Prompt。
 
 ### History
 
-历史模块已具备本地存储服务，当前默认关闭保存历史。托盘历史入口目前只提示“已接入本地存储，详细列表后续 UI 展示”。
+历史模块已具备本地存储服务，当前默认关闭保存历史。托盘菜单不展示历史入口；清空历史放在设置窗口高级页中。
 
 ### Infrastructure
 
@@ -178,11 +182,11 @@ ClipboardSelectionProvider 读取当前剪贴板文本
 
 ### UI/Themes
 
-主题模块维护浅色、深色、设计 token 和组件样式。运行时根据设置应用 `System`、`Light` 或 `Dark` 主题。
+主题模块维护浅色、深色、设计 token 和组件样式。运行时根据设置应用 `System`、`Light` 或 `Dark` 主题。深色主题主背景已调整为 `#0A0A0C`。设置窗口拥有独立浅色/深色调色板，ToggleSwitch 开启态使用蓝紫渐变，浅色模式的关闭态轨道和 Slider 未选轨道使用 Apple 风格中性灰，确保控件在白天模式下仍清晰可读。
 
 ### Tests
 
-`tests/Hermes.Tests` 是轻量控制台测试套件，覆盖设置、脱敏、选区校验、选择候选、快捷键解析和 OpenAI 响应解析等逻辑。WPF 可视交互仍需要真实应用试用补充验证。
+`tests/Hermes.Tests` 是轻量控制台测试套件，覆盖设置、脱敏、选区校验、选择候选、快捷键解析、设置窗口选项文案和值映射、OpenAI 响应解析等逻辑。WPF 可视交互仍需要真实应用试用补充验证。
 
 ## 打包策略
 
@@ -268,7 +272,8 @@ Hermes 的用户数据保存在：
 
 - UI Automation 在浏览器、PDF、Electron、自绘编辑器中的行为不完全一致。
 - 自动悬浮按钮无法保证所有应用都出现。
-- 当前历史入口没有完整列表 UI。
+- 当前没有完整历史列表 UI，仅保留高级页清空历史动作。
+- 设置窗口的 Mica 背景依赖 Windows 11 DWM 能力；在不支持的系统或透明窗口组合受限时会退回内置深色背景。
 - 真实多显示器、高 DPI、不同应用兼容性需要持续人工试用。
 - 当前打包是 portable 测试包，不是正式安装器。
 
@@ -281,3 +286,11 @@ Hermes 的用户数据保存在：
 | 2026-05-26 | 记录自包含 runtime packs 不可用时的临时 `win-x64 framework-dependent` 发布路径，用于当前开发机试用。 | 打包发布 |
 | 2026-05-26 | 新增 `win-x64-local-runtime` 测试包约定，通过包内 `dotnet/` 和 `Run-Hermes.cmd` 支持当前机器直接试用。 | 打包发布 |
 | 2026-05-26 | 新增 `global.json`、项目级 `NuGet.Config` 和 `scripts\*.ps1` 环境脚本，固定 SDK、离线包源、项目内缓存和标准 restore/test/publish 流程。 | 开发环境 |
+| 2026-05-26 | 设置主窗口重构为固定 800×600 无边框深色 Mica 风格面板，新增三段式布局、品牌 Header、键帽快捷键、卡片化六页设置、Footer 动作栏、API Key 显示/隐藏、主题分段选择器、外观滑块、快捷键录制和测试连接 loading/success 状态。 | Shell / UI/Themes |
+| 2026-05-26 | 修复设置窗口 XAML 入口动效挂载到 `Window.RenderTransform` 导致托盘设置无法弹出的问题；修复 ComboBox 显示 `SettingsOption` 默认字符串、输入框文字垂直裁切，并让外观页主题切换立即作用于设置窗口自身。 | Shell / UI/Themes |
+| 2026-05-26 | 精修设置主窗口为“果系极简面板”：移除松散装饰副标题，补齐设置窗口本地 TextBox、PasswordBox、ComboBox 和 ComboBoxItem 样式，让输入框、密钥框、下拉框与控制中心卡片体系统一。 | Shell / UI/Themes |
+| 2026-05-26 | 修复设置窗口打开失败：本地主题切换不再直接修改可能被冻结的 WPF Brush 资源，改为替换新的 SolidColorBrush，避免点击托盘“设置”时因只读刷子异常导致窗口不弹出。 | Shell / UI/Themes |
+| 2026-05-26 | 根据视觉验收反馈调整设置主窗口：移除标题旁“全局控制中心”，下移页签导航，将右上角快捷键键帽改为可点击录制按钮，移除独立“快捷键”页签；测试连接移入翻译页 API Key 行，清空历史移入高级页，Footer 只保留状态与保存。 | Shell / UI/Themes |
+| 2026-05-26 | 调整托盘交互：左键单击托盘图标直接打开设置，右键菜单移除历史入口；设置窗口本地主题资源改为 DynamicResource，使浅色、深色和跟随系统主题立即作用于设置界面。 | Tray / Shell / UI-Themes |
+| 2026-05-26 | 根据浅色模式和翻译页验收反馈继续精修设置窗口：拉大品牌区与页签垂直间距；设置页使用本地 ToggleSwitch 和 Slider 资源，修正白天模式开关/滑块灰阶可读性；API Key 输入框缩短并将测试连接放在右侧；模型字段改为可刷新列表，调用 `/models` 解析可用模型；目标语言固定中文不再展示；新增可编辑系统 Prompt 并将其传入 Responses API 请求。 | Shell / Translation / Settings / UI-Themes |
+| 2026-05-26 | 根据模型字段显示验收反馈回退模型自动解析入口：移除设置页模型刷新按钮和 OpenAI 兼容 `/models` 调用，Model 恢复为普通手动输入框，避免紧凑宽度下模型名截断。 | Shell / Translation / Settings |

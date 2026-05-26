@@ -111,10 +111,6 @@
                     Click="Settings_Click">
                 <TextBlock Text="设置" FontSize="13"/>
             </Button>
-            <Button Style="{StaticResource TrayMenu.Item}"
-                    Click="History_Click">
-                <TextBlock Text="查看历史" FontSize="13"/>
-            </Button>
 
             <Border Height="1" Background="{DynamicResource Brush.Border}" Margin="10,6"/>
 

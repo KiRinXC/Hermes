@@ -18,7 +18,6 @@ public sealed class TrayService : IDisposable
             Icon = LoadAppIcon()
         };
         _notifyIcon.MouseUp += NotifyIcon_MouseUp;
-        _notifyIcon.DoubleClick += (_, _) => SettingsRequested?.Invoke(this, EventArgs.Empty);
     }
 
     public event EventHandler? PauseResumeRequested;
@@ -26,8 +25,6 @@ public sealed class TrayService : IDisposable
     public event EventHandler? TranslateClipboardRequested;
 
     public event EventHandler? SettingsRequested;
-
-    public event EventHandler? HistoryRequested;
 
     public event EventHandler? ExitRequested;
 
@@ -63,6 +60,12 @@ public sealed class TrayService : IDisposable
 
     private void NotifyIcon_MouseUp(object? sender, Forms.MouseEventArgs e)
     {
+        if (e.Button == Forms.MouseButtons.Left)
+        {
+            SettingsRequested?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
         if (e.Button != Forms.MouseButtons.Right)
         {
             return;
@@ -75,7 +78,6 @@ public sealed class TrayService : IDisposable
             _menuWindow.PauseResumeRequested += (_, _) => PauseResumeRequested?.Invoke(this, EventArgs.Empty);
             _menuWindow.TranslateClipboardRequested += (_, _) => TranslateClipboardRequested?.Invoke(this, EventArgs.Empty);
             _menuWindow.SettingsRequested += (_, _) => SettingsRequested?.Invoke(this, EventArgs.Empty);
-            _menuWindow.HistoryRequested += (_, _) => HistoryRequested?.Invoke(this, EventArgs.Empty);
             _menuWindow.ExitRequested += (_, _) => ExitRequested?.Invoke(this, EventArgs.Empty);
             _menuWindow.Closed += (_, _) => _menuWindow = null;
             _menuWindow.Show();

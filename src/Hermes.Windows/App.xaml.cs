@@ -161,7 +161,6 @@ public partial class App : System.Windows.Application
             }
         };
         _trayService.SettingsRequested += (_, _) => ShowSettingsWindow();
-        _trayService.HistoryRequested += (_, _) => _trayService.ShowBalloon("翻译历史", "历史功能已接入本地存储，详细列表将在后续 UI 中展示。");
         _trayService.ExitRequested += (_, _) => Shutdown();
         _trayService.Show();
 

@@ -35,8 +35,14 @@ public sealed class OpenAiTranslationService : ITranslationService
 
     public Task<TranslationResult> TestConnectionAsync(CancellationToken cancellationToken = default)
     {
+        var settings = _settingsService.Current;
         return TranslateAsync(
-            new TranslationRequest("Connection test.", "natural", "Simplified Chinese", PreserveFormatting: true),
+            new TranslationRequest(
+                "Connection test.",
+                settings.Translation.Style,
+                settings.Translation.TargetLanguage,
+                settings.Translation.PreserveFormatting,
+                settings.Translation.SystemPrompt),
             cancellationToken);
     }
 
@@ -107,7 +113,11 @@ public sealed class OpenAiTranslationService : ITranslationService
         return new
         {
             model,
-            instructions = TranslationPromptBuilder.BuildInstructions(request.Style, request.TargetLanguage, request.PreserveFormatting),
+            instructions = TranslationPromptBuilder.BuildInstructions(
+                request.Style,
+                request.TargetLanguage,
+                request.PreserveFormatting,
+                request.SystemPrompt),
             input = TranslationPromptBuilder.BuildInput(request.SourceText)
         };
     }
