@@ -1,2 +1,0 @@
-D:\Code\Demo\AITranslator\AITranslator.Windows.pdb
-D:\Code\Demo\AITranslator\AITranslator.Windows.exe
