@@ -1,3 +1,19 @@
+# Agent 协作硬性要求
+
+## Design.md 同步要求
+
+根目录 `Design.md` 是 Hermes 当前设计、模块职责、核心流程、打包策略和功能变更的同步文档。任何开发 agent 在新增、修改或删减功能时，必须同步更新 `Design.md`。
+
+同步规则：
+
+* 如果用户可见功能发生变化，更新 `Design.md` 的核心流程、模块说明或已知限制。
+* 如果项目结构、配置、隐私策略、打包方式、测试策略发生变化，更新 `Design.md` 对应章节。
+* 每次功能级变化都要写入 `Design.md` 的“设计变更记录”。
+* README 负责项目入口说明，Design.md 负责实现和决策回顾，两者内容不能长期冲突。
+* 交付前必须检查代码、README、Design.md、AGENTS.md 是否仍描述同一个项目状态。
+
+---
+
 下面是一份可以直接交给开发 agent 的需求细化稿。我会把它定义为 **Windows 系统级 AI 翻译助手**，而不是传统意义上的“浏览器插件”。因为你的目标是“任何应用中选中文本即可翻译”，这在 Windows 上本质是一个常驻桌面应用：监听选区、显示悬浮按钮、调用 AI API、展示结果。
 
 ---
@@ -404,9 +420,10 @@ API Key 必须本地加密存储，不能明文写入配置文件。
 # 7. 推荐架构
 
 ```text
-AITranslator.Windows
+Hermes.Windows
 ├─ App.xaml / App.xaml.cs
-├─ MainWindow              # 设置页或主窗口
+├─ Shell
+│  └─ SettingsWindow       # 设置页
 ├─ Tray
 │  └─ TrayService
 ├─ Input

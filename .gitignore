@@ -4,3 +4,9 @@ docs/
 
 openspec/
 
+bin/
+obj/
+.dotnet-home/
+.nuget/
+artifacts/
+

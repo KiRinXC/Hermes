@@ -9,9 +9,9 @@ using Hermes.Windows.Settings;
 using Hermes.Windows.Translation;
 using Hermes.Windows.UI.Themes;
 
-namespace Hermes.Windows;
+namespace Hermes.Windows.Shell;
 
-public partial class MainWindow : Window
+public partial class SettingsWindow : Window
 {
     private readonly SettingsService _settingsService;
     private readonly ISecretStorageService _secretStorage;
@@ -21,7 +21,7 @@ public partial class MainWindow : Window
     private readonly TriggerDiagnosticsService _triggerDiagnosticsService;
     private readonly AppLogger _logger;
 
-    public MainWindow(
+    public SettingsWindow(
         SettingsService settingsService,
         ISecretStorageService secretStorage,
         ITranslationService translationService,

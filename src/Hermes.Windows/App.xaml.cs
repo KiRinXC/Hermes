@@ -6,6 +6,7 @@ using Hermes.Windows.Input;
 using Hermes.Windows.Overlay;
 using Hermes.Windows.Selection;
 using Hermes.Windows.Settings;
+using Hermes.Windows.Shell;
 using Hermes.Windows.Translation;
 using Hermes.Windows.Tray;
 using Hermes.Windows.UI.Themes;
@@ -28,7 +29,7 @@ public partial class App : System.Windows.Application
     private TranslationHistoryService? _historyService;
     private ITranslationService? _translationService;
     private TriggerDiagnosticsService? _triggerDiagnosticsService;
-    private MainWindow? _settingsWindow;
+    private SettingsWindow? _settingsWindow;
     private bool _paused;
 
     protected override async void OnStartup(StartupEventArgs e)
@@ -241,7 +242,7 @@ public partial class App : System.Windows.Application
 
         if (_settingsWindow is null || !_settingsWindow.IsVisible)
         {
-            _settingsWindow = new MainWindow(
+            _settingsWindow = new SettingsWindow(
                 _settingsService,
                 _secretStorage,
                 _translationService,
