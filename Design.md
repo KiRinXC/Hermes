@@ -22,6 +22,7 @@ Hermes 是 Windows 10/11 上的全局 AI 划词翻译助手。它常驻后台，
 Hermes
 ├─ README.md                       # 给读者的项目入口
 ├─ Design.md                       # 当前设计、模块职责、变更同步记录
+├─ UI.md                           # 当前 UI 设计原则、视觉系统和组件规范
 ├─ AGENTS.md                       # 给开发 agent 的产品和工作约束
 ├─ Hermes.sln
 ├─ src/
@@ -40,6 +41,10 @@ Hermes
 │     └─ UI/Themes/
 ├─ tests/
 │  └─ Hermes.Tests/
+├─ docs/
+│  ├─ assets/                       # README 和发布页视觉素材，当前头图为 Info.png
+│  ├─ prompts/                      # 文生图提示词等可复用创意素材
+│  └─ release-notes/                # GitHub Release 文案草稿
 └─ artifacts/                      # 本地发布产物，忽略 Git
 ```
 
@@ -73,9 +78,9 @@ SelectionOrchestrator
   ├─ 先读 UI Automation 选区
   └─ 失败后使用受控剪贴板兜底
   ↓
-OpenAiTranslationService 调用 Responses API
+OpenAiTranslationService 以流式 Responses API 请求翻译
   ↓
-OverlayManager 显示翻译卡片
+OverlayManager 显示翻译卡片并逐段追加译文
 ```
 
 快捷键翻译是当前最稳定的主路径，也是后续真实使用测试的第一优先级。
@@ -83,9 +88,9 @@ OverlayManager 显示翻译卡片
 ### 鼠标划词悬浮按钮
 
 ```text
-用户拖选文本
+用户按住 Ctrl 拖选文本
   ↓
-MouseHookService 捕捉选择手势完成
+MouseHookService 捕捉 Ctrl 选择手势完成
   ↓
 SelectionCandidateService 尝试读取候选选区
   ↓
@@ -98,7 +103,7 @@ TranslationCoordinator 翻译候选文本
 TranslationPopupWindow 显示结果
 ```
 
-被动鼠标路径不执行剪贴板复制，优先避免用户未明确触发时污染剪贴板或上传误判文本。
+被动鼠标路径不执行剪贴板复制，且普通拖选不会进入候选判断或触发诊断记录；只有从按下到释放都保持 Ctrl 的拖选才会继续评估悬浮按钮。这样既减少鼠标 hook 后续工作量，也避免用户未明确触发时污染剪贴板或上传误判文本。
 
 ### 剪贴板翻译
 
@@ -122,9 +127,9 @@ ClipboardSelectionProvider 读取当前剪贴板文本
 
 `Shell/SettingsWindow` 是设置入口，负责 API、翻译、触发、UI、隐私、开机启动等配置的展示和保存。设置窗口由托盘菜单或翻译卡片中的设置动作打开。
 
-当前设置窗口采用固定 `800 × 600` 的无边框 WPF 壳，窗口内部按 Header、Body、Footer 三段式组织。Header 包含紧凑品牌区、可点击录制的快捷键键帽和五个文字页签；Body 使用圆角分组卡片承载常规、翻译、外观、隐私和高级诊断；Footer 固定放置保存和状态反馈。窗口打开时执行淡入与缩放动效，并尝试启用 Windows 11 Mica 背景材质，系统不支持时自动退回深色半透明背景。
+当前设置窗口采用固定 `800 × 600` 的无边框 WPF 壳，窗口内部按 Header、Body、Footer 三段式组织。Header 包含紧凑品牌区、可点击录制的快捷键键帽和五个文字页签；页签与应用图标保持更舒展的垂直间距，外层壳体不再使用会被透明窗口裁切成黑框的外边距阴影。Body 使用圆角分组卡片承载常规、翻译、外观、隐私和高级诊断；Footer 固定放置保存和状态反馈。设置窗口文字层级以 Regular/Medium 为主，不使用 Bold/SemiBold 作为常规 UI 字重。窗口打开时执行淡入与缩放动效；为保证透明无边框窗口四角干净，设置窗不再启用矩形 DWM/Mica 背景，而由本地壳体背景和运行时圆角裁剪承载视觉外观。
 
-设置页控件已从传统表单升级为更轻量的交互形态：布尔项使用设置页本地 ToggleSwitch，外观规格使用 Slider，主题使用分段选择器，API Key 支持显示/隐藏，右上角键帽按钮支持录制组合键。测试连接作为 API 凭据上下文动作放在 API Key 行右侧，清空历史作为高级诊断上下文动作放在高级页内。翻译页的模型字段保持为手动输入框，避免模型选择控件在紧凑布局中截断；目标语言固定为中文，不再在设置页展示。翻译页还提供可编辑的系统 Prompt，空白时回退到默认英文到简体中文翻译提示词。设置窗口内置本地 TextBox、PasswordBox、ComboBox、ComboBoxItem、FooterButton、Tab、ToggleSwitch、Slider 和滚动条样式，避免设置页回落到原生控件质感。`SettingsWindowOptions` 用于分离设置项显示文案和持久化值，避免中文高级文案写入配置文件。`SettingsWindowThemePalettes` 负责设置窗口自身的浅色/深色调色板，外观页切换主题时会替换本地 brush 资源；设置窗口样式使用 DynamicResource 引用这些 brush，因此浅色/深色/跟随系统会立即作用于设置窗口自身。浅色主题下开关关闭轨道和滑块未选轨道使用可读灰阶，避免黑色控件在浅色面板中过重或不可见。
+设置页控件已从传统表单升级为更轻量的交互形态：布尔项使用设置页本地 ToggleSwitch，外观规格使用 Slider，主题使用分段选择器，API Key 支持显示/隐藏，右上角键帽按钮支持录制组合键。主题分段选择器的轨道、选中胶囊和描边都使用本地动态主题资源，浅色模式下以灰色轨道、白色选中胶囊和细描边明确当前选项。鼠标点击页签切换设置分区后，会在内容加载完成时清掉 WPF 自动落到第一个开关上的焦点，避免隐私页“保存翻译历史”等 ToggleSwitch 出现误导性的蓝色焦点框；键盘导航路径仍保留可见焦点。键帽按钮整体背景和代码生成的单个键帽都使用动态主题资源，浅色模式下会立即切换为浅灰外壳和浅色键帽；进入录制后再次点击按钮、点击窗口其它区域或按 Esc 会取消录制并清掉蓝色焦点框，录制过程不再写入 Footer 状态提示。测试连接作为 API 凭据上下文动作放在 API Key 行右侧，清空历史作为高级诊断上下文动作放在高级页内。翻译页的模型字段保持为手动输入框，避免模型选择控件在紧凑布局中截断；目标语言固定为中文，不再在设置页展示。翻译页还提供可编辑的系统 Prompt，空白时回退到默认英文到简体中文翻译提示词。设置窗口内置本地 TextBox、PasswordBox、ComboBox、ComboBoxItem、FooterButton、Tab、ToggleSwitch、Slider 和滚动条样式，避免设置页回落到原生控件质感。`SettingsWindowOptions` 用于分离设置项显示文案和持久化值，避免中文高级文案写入配置文件。`SettingsWindowThemePalettes` 负责设置窗口自身的浅色/深色调色板，外观页切换主题时会替换本地 brush 资源；设置窗口样式使用 DynamicResource 引用这些 brush，因此浅色/深色/跟随系统会立即作用于设置窗口自身。浅色主题下开关关闭轨道、滑块未选轨道和快捷键键帽使用可读灰阶，避免黑色控件在浅色面板中过重或不可见。
 
 ### Tray
 
@@ -138,8 +143,8 @@ ClipboardSelectionProvider 读取当前剪贴板文本
 
 选区模块负责“从哪里拿到文本”和“文本是否值得翻译”。
 
-- `UiAutomationSelectionProvider` 通过 Windows UI Automation 读取当前选区。
-- `ClipboardSelectionProvider` 在显式触发时使用受控复制或读取剪贴板文本。
+- `UiAutomationSelectionProvider` 通过 Windows UI Automation 读取当前选区，读取工作运行在后台线程，避免点击悬浮翻译按钮时卡住 WPF UI 线程。
+- `ClipboardSelectionProvider` 在显式触发时使用受控复制或读取剪贴板文本；剪贴板操作运行在专用 STA 线程，不再通过主 Dispatcher 执行 `Ctrl+C` 和剪贴板读写。
 - `ForegroundWindowService` 判断前台窗口、排除应用和敏感控件。
 - `SelectionTextValidator` 根据语言、长度和设置校验文本。
 - `SelectionOrchestrator` 决定显式触发、被动鼠标和剪贴板翻译时的读取策略。
@@ -148,18 +153,21 @@ ClipboardSelectionProvider 读取当前剪贴板文本
 
 悬浮层模块负责按钮、翻译卡片和位置计算。
 
-- `FloatingButtonWindow` 显示划词后的轻量翻译按钮。
-- `TranslationPopupWindow` 显示加载、长耗时、成功、错误、复制、重试、固定和关闭状态。
+- `FloatingButtonWindow` 显示按住 Ctrl 划词后的轻量翻译按钮。
+- `FloatingButtonWindow` 的浅色/深色图标基于 `src\Hermes.Windows\Resources\Icons\FloatingButtonLight.svg` 和 `FloatingButtonDark.svg` 的路径和填充色绘制，未点击和未选中状态不再对图标本体施加模糊或变淡效果。按钮外层固定为 44×44 透明圆角命中区，内部 25×25 图标不参与命中测试，用户点击热区任意位置即可触发翻译。
+- `TranslationPopupWindow` 显示加载、流式译文、长耗时、成功、错误、复制、重试、固定和关闭状态；成功完成且未固定时，鼠标点击浮窗外部会关闭卡片。
+- `TranslationPopupWindow` 顶部使用应用图标作为品牌标识；用户可以从卡片背景、正文和原文区域等非交互表面拖动卡片，按钮、开关、滚动条等交互控件不会触发拖拽。
 - `OverlayPositionService` 负责多屏幕边界内的位置约束。
-- `OverlayManager` 对外提供显示、更新和关闭悬浮 UI 的统一入口。
+- `OverlayManager` 对外提供显示、追加流式译文、完成翻译和关闭悬浮 UI 的统一入口，并区分普通被动 UI 关闭与已完成未固定浮窗的外部点击关闭。
 
 ### Translation
 
 翻译模块封装 OpenAI 兼容 Responses API。
 
 - `TranslationPromptBuilder` 构造英文到简体中文翻译指令，并提供可配置 Prompt 的默认值。
-- `OpenAiTranslationService` 读取设置和密钥，发送请求，解析 `output_text` 或 `output` 内容。
-- `TranslationCoordinator` 串联选区、翻译、历史和 UI，是翻译工作流协调层。
+- `OpenAiTranslationService` 读取设置和密钥，发送 Responses API 请求。普通路径解析 `output_text` 或 `output` 内容；翻译主路径使用 `stream = true` 读取 SSE 事件，按 `response.output_text.delta` 逐段输出，并在完成时汇总最终译文。
+- `TranslationStreamEvent` 描述流式翻译的增量、完成和失败事件。
+- `TranslationCoordinator` 串联选区、流式翻译、历史和 UI，是翻译工作流协调层。它会在 Ctrl 条件不满足时直接跳过被动鼠标候选流程，并对流式 delta 做轻量批处理后再刷新 UI；用户关闭翻译卡片时会取消当前请求，成功完成后再保存最终译文。
 
 错误处理覆盖缺少 API Key、鉴权失败、余额或额度不足、限流、无效请求、网络错误、超时、取消和空响应。
 
@@ -174,7 +182,7 @@ ClipboardSelectionProvider 读取当前剪贴板文本
 
 ### History
 
-历史模块已具备本地存储服务，当前默认关闭保存历史。托盘菜单不展示历史入口；清空历史放在设置窗口高级页中。
+历史模块已具备本地存储服务，当前默认关闭保存历史。托盘菜单不展示历史入口；清空历史放在设置窗口高级页中，并会同步清空该页展示的触发诊断队列。
 
 ### Infrastructure
 
@@ -182,11 +190,11 @@ ClipboardSelectionProvider 读取当前剪贴板文本
 
 ### UI/Themes
 
-主题模块维护浅色、深色、设计 token 和组件样式。运行时根据设置应用 `System`、`Light` 或 `Dark` 主题。深色主题主背景已调整为 `#0A0A0C`。设置窗口拥有独立浅色/深色调色板，ToggleSwitch 开启态使用蓝紫渐变，浅色模式的关闭态轨道和 Slider 未选轨道使用 Apple 风格中性灰，确保控件在白天模式下仍清晰可读。
+主题模块维护浅色、深色、设计 token 和组件样式。运行时根据设置应用 `System`、`Light` 或 `Dark` 主题。深色主题主背景已调整为 `#0A0A0C`。设置窗口拥有独立浅色/深色调色板，ToggleSwitch 开启态使用蓝紫渐变，浅色模式的关闭态轨道和 Slider 未选轨道使用 Apple 风格中性灰，确保控件在白天模式下仍清晰可读。整体 UI 字重控制在 Regular/Medium，标题、按钮、页签和状态文字用 Medium 建立层级，避免大面积加粗造成粗糙感。
 
 ### Tests
 
-`tests/Hermes.Tests` 是轻量控制台测试套件，覆盖设置、脱敏、选区校验、选择候选、快捷键解析、设置窗口选项文案和值映射、OpenAI 响应解析等逻辑。WPF 可视交互仍需要真实应用试用补充验证。
+`tests/Hermes.Tests` 是轻量控制台测试套件，覆盖设置、脱敏、选区校验、选择候选、快捷键解析、鼠标 Ctrl 触发门控、设置窗口选项文案和值映射、历史/诊断清理、OpenAI 普通/流式响应解析、悬浮按钮清晰度约束、翻译卡片拖拽/外部点击关闭入口和 UI 字重约束等逻辑。WPF 可视交互仍需要真实应用试用补充验证。
 
 ## 打包策略
 
@@ -194,8 +202,8 @@ ClipboardSelectionProvider 读取当前剪贴板文本
 
 - `global.json` 指定 .NET SDK `10.0.300`。
 - `NuGet.Config` 使用 `.nuget\offline` 作为优先包源，并保留 `nuget.org` 作为在线包源。
-- `scripts\Use-HermesEnv.ps1` 统一设置 `DOTNET_CLI_HOME`、NuGet 缓存、scratch/cache 目录和可选代理。
-- `scripts\Restore-Hermes.ps1`、`scripts\Test-Hermes.ps1`、`scripts\Publish-Hermes.ps1` 是标准入口。
+- `scripts\Use-HermesEnv.ps1` 统一设置 `DOTNET_CLI_HOME`、NuGet 缓存、scratch/cache 目录和可选代理，并确保 `.nuget\offline` 本地源目录存在。
+- `scripts\Restore-Hermes.ps1`、`scripts\Test-Hermes.ps1`、`scripts\Publish-Hermes.ps1` 和 `scripts\Package-HermesRelease.ps1` 是标准入口。
 
 自包含发布需要以下 runtime packs 放在 `.nuget\offline`：
 
@@ -205,17 +213,37 @@ microsoft.netcore.app.runtime.win-x64.10.0.8.nupkg
 microsoft.windowsdesktop.app.runtime.win-x64.10.0.8.nupkg
 ```
 
+如果 `.nuget\offline` 为空，`NuGet.Config` 仍会回退到 `nuget.org`；环境脚本会创建空目录，避免 NuGet 因本地源路径不存在而中断发布。
+
 真实使用测试优先采用完整自包含 portable 包：
 
 ```text
 artifacts\publish\Hermes.Windows\manual-test\win-x64-self-contained\
 ```
 
+日常修复发布固定覆盖上述 `win-x64-self-contained` 目录，不再为每次 UI 或小修复新增带后缀的发布目录；如果目录被正在运行的 Hermes 锁定，应先提示用户退出应用再覆盖，避免继续产生废弃包。
+
 推荐命令：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\Publish-Hermes.ps1
 ```
+
+对外 GitHub Release 采用 zip 包分发，脚本会先生成固定 self-contained portable 目录，再压缩为版本化 zip 并生成 SHA256 校验文件：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\Package-HermesRelease.ps1 -Version 0.1.0
+```
+
+输出目录：
+
+```text
+artifacts\release\v0.1.0\
+├─ Hermes-v0.1.0-win-x64-portable.zip
+└─ checksums.txt
+```
+
+对应的 GitHub Release 说明草稿保存在 `docs\release-notes\`。README 面向最终用户介绍下载、运行、隐私和使用边界，内部实现细节继续放在 `Design.md`。
 
 如果本机缺少自包含发布所需的 .NET runtime packs，且 NuGet 无法访问，可以临时发布 framework-dependent 包用于本机试用：
 
@@ -244,6 +272,12 @@ artifacts\publish\Hermes.Windows\manual-test\win-x64-local-runtime\
 - 后续正式发布前仍可追加单文件包、MSIX 或安装器。
 
 `artifacts/` 是本地构建产物目录，不进入 Git。
+
+GitHub 发布前的仓库边界：
+
+- `docs/`、`README.md`、`UI.md`、`Design.md`、`scripts/`、`src/` 和 `tests/` 应进入 Git。
+- `.codex/`、`openspec/`、`.dotnet-home/`、`.nuget/`、`artifacts/`、`bin/`、`obj/`、测试结果、日志、密钥、签名证书和压缩包由 `.gitignore` 排除。
+- README 头图 `docs/assets/Info.png`、文生图提示词和 release notes 属于对外发布资产，需要保留。
 
 ## 用户数据和隐私
 
@@ -294,3 +328,17 @@ Hermes 的用户数据保存在：
 | 2026-05-26 | 调整托盘交互：左键单击托盘图标直接打开设置，右键菜单移除历史入口；设置窗口本地主题资源改为 DynamicResource，使浅色、深色和跟随系统主题立即作用于设置界面。 | Tray / Shell / UI-Themes |
 | 2026-05-26 | 根据浅色模式和翻译页验收反馈继续精修设置窗口：拉大品牌区与页签垂直间距；设置页使用本地 ToggleSwitch 和 Slider 资源，修正白天模式开关/滑块灰阶可读性；API Key 输入框缩短并将测试连接放在右侧；模型字段改为可刷新列表，调用 `/models` 解析可用模型；目标语言固定中文不再展示；新增可编辑系统 Prompt 并将其传入 Responses API 请求。 | Shell / Translation / Settings / UI-Themes |
 | 2026-05-26 | 根据模型字段显示验收反馈回退模型自动解析入口：移除设置页模型刷新按钮和 OpenAI 兼容 `/models` 调用，Model 恢复为普通手动输入框，避免紧凑宽度下模型名截断。 | Shell / Translation / Settings |
+| 2026-05-27 | 优化设置与翻译 UI：拉开设置页图标和文字距离；翻译卡片左上角改用应用图标；卡片支持从非交互区域整体拖动；划词浮动按钮在不同主题和未选中状态下保持清晰。 | Shell / Overlay / UI-Themes |
+| 2026-05-27 | 翻译主流程改为 Responses API 流式请求，按 `response.output_text.delta` 增量更新翻译卡片，完成后保存最终译文；保留非流式路径用于测试连接和兼容测试。 | Translation / Overlay / History |
+| 2026-05-27 | 发布脚本验证通过 `D:\Code\Env\dotnet` 生成 `win-x64 self-contained` portable 包，并修复 `.nuget\offline` 本地源目录缺失导致 publish restore 中断的问题。 | 打包发布 / 开发环境 |
+| 2026-05-27 | 修复设置窗口外层黑框：移除透明无边框窗口外层被裁切的黑色阴影和外边距，并进一步拉开应用图标与页签菜单的垂直距离。 | Shell / UI-Themes |
+| 2026-05-27 | 划词浮动翻译按钮改用独立浅色/深色 SVG 主题图标，并新增 44×44 透明圆角命中区，解决只能点击图标局部区域才能触发翻译的问题。 | Overlay / UI-Themes |
+| 2026-05-27 | 收敛全局 UI 字重：设置页、托盘、翻译卡片和通用组件从 Bold/SemiBold 调整为 Medium/Regular，新增测试防止常规 UI 回退到重字重。 | Shell / Tray / Overlay / UI-Themes |
+| 2026-05-27 | 收紧被动鼠标触发：只有按住 Ctrl 完成拖选才会进入候选评估，普通拖选不再记录触发诊断；清空历史同步清空高级页诊断记录；已完成且未固定的翻译浮窗支持点击外部关闭；流式 UI 更新改为小批量刷新以降低卡顿。 | Input / Selection / Shell / Overlay / Translation |
+| 2026-05-27 | 优化点击悬浮翻译图标后的响应：UI Automation 选区读取改到后台线程，剪贴板兜底改到专用 STA 线程，避免读取选区和受控复制阻塞 WPF 主线程。 | Selection / Translation |
+| 2026-05-27 | 消除设置窗口左上角残留直角阴影：关闭透明窗口上的矩形 DWM/Mica 背景，并为 RootShell 增加运行时圆角裁剪，避免子内容或系统背景越过圆角。 | Shell / UI-Themes |
+| 2026-05-27 | 优化设置窗口快捷键键帽：浅色模式下键帽外壳和单键即时恢复浅色搭配；快捷键录制支持再次点击、点击其它区域或按 Esc 取消，取消或完成后清除蓝色焦点框，录制过程不再占用左下角状态提示。 | Shell / UI-Themes |
+| 2026-05-27 | 修正设置窗口主题分段选择器浅色模式选中态：选中胶囊改为动态调色板资源，浅色下使用白色胶囊和中性描边，避免“浅色模式”当前选项融进背景。 | Shell / UI-Themes |
+| 2026-05-27 | 修正设置页鼠标切换页签后的自动焦点：点击“隐私”等菜单栏时清除 WPF 自动落到第一个 ToggleSwitch 的焦点，避免保存翻译历史开关出现误导性蓝框，同时保留键盘导航焦点。 | Shell / UI-Themes |
+| 2026-05-27 | 将 README 改为面向最终用户的项目入口，新增章鱼主题 README 插图、文生图提示词、v0.1.0 Release Notes 草稿和 `Package-HermesRelease.ps1`，用于生成 GitHub Release portable zip 与校验文件。 | 文档维护 / 打包发布 |
+| 2026-05-27 | 新增根目录 `UI.md` 记录 Hermes UI 设计规范；README 头图改为 `docs/assets/Info.png`；整合 `.gitignore` 以保留 `docs/`、脚本和应用资源并忽略本地缓存、构建产物、日志、密钥和压缩包；浮动按钮浅色/深色 SVG 从根目录迁移到 `src\Hermes.Windows\Resources\Icons\`，保持根目录整洁。 | 文档维护 / UI-Themes / 仓库结构 |

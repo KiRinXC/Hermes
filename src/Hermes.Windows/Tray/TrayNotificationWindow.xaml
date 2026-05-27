@@ -48,7 +48,7 @@
                         VerticalAlignment="Center">
                 <TextBlock x:Name="TitleText"
                            FontSize="14"
-                           FontWeight="SemiBold"
+                           FontWeight="Medium"
                            Foreground="{DynamicResource Brush.TextPrimary}"
                            TextTrimming="CharacterEllipsis"/>
                 <TextBlock x:Name="MessageText"

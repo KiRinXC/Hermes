@@ -129,7 +129,7 @@ public partial class App : System.Windows.Application
                 return;
             }
 
-            _translationCoordinator?.ClosePassiveUi();
+            _translationCoordinator?.ClosePassiveUiAfterPointerActivity();
         };
         _mouseHookService.SelectionGestureCompleted += (_, point) =>
         {

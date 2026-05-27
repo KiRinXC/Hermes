@@ -2,6 +2,7 @@
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Diagnostics;
+using System.IO;
 using System.Text;
 using System.Text.Json;
 using Hermes.Windows.Infrastructure;
@@ -108,7 +109,125 @@ public sealed class OpenAiTranslationService : ITranslationService
         }
     }
 
+    public async Task<TranslationResult> TranslateStreamAsync(
+        TranslationRequest request,
+        Func<TranslationStreamEvent, CancellationToken, Task> onEvent,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(onEvent);
+
+        var settings = _settingsService.Current;
+        var apiKey = await _secretStorage.GetApiKeyAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            var result = TranslationResult.Fail(TranslationErrorKind.MissingApiKey, "请先在设置中填写 API Key。");
+            await onEvent(TranslationStreamEvent.Failed(result), cancellationToken);
+            return result;
+        }
+
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(60));
+
+        try
+        {
+            var stopwatch = Stopwatch.StartNew();
+            using var httpRequest = new HttpRequestMessage(HttpMethod.Post, BuildResponsesUri(settings.Api.BaseUrl));
+            httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+            httpRequest.Content = new StringContent(
+                JsonSerializer.Serialize(CreatePayload(settings.Api.Model, request, stream: true), JsonOptions),
+                Encoding.UTF8,
+                "application/json");
+
+            using var response = await _httpClient.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, timeoutCts.Token);
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync(timeoutCts.Token);
+                stopwatch.Stop();
+                _logger.Warning($"Streaming translation API completed in {stopwatch.ElapsedMilliseconds} ms with {(int)response.StatusCode} {response.StatusCode}.");
+                var result = MapFailure(response.StatusCode, body);
+                await onEvent(TranslationStreamEvent.Failed(result), timeoutCts.Token);
+                return result;
+            }
+
+            var accumulatedText = new StringBuilder();
+            await using var stream = await response.Content.ReadAsStreamAsync(timeoutCts.Token);
+            using var reader = new StreamReader(stream, Encoding.UTF8);
+
+            while (true)
+            {
+                var message = await ReadSseMessageAsync(reader, timeoutCts.Token);
+                if (message is null)
+                {
+                    break;
+                }
+
+                var streamEvent = ParseStreamingEvent(message.EventName, message.Data, accumulatedText);
+                if (streamEvent is null)
+                {
+                    continue;
+                }
+
+                if (streamEvent.Kind == TranslationStreamEventKind.Failed)
+                {
+                    var result = streamEvent.Result ?? TranslationResult.Fail(TranslationErrorKind.Unknown, "流式翻译失败，请稍后重试。");
+                    await onEvent(TranslationStreamEvent.Failed(result), timeoutCts.Token);
+                    return result;
+                }
+
+                if (streamEvent.Kind == TranslationStreamEventKind.Completed)
+                {
+                    break;
+                }
+
+                await onEvent(streamEvent, timeoutCts.Token);
+            }
+
+            var translatedText = accumulatedText.ToString().Trim();
+            if (string.IsNullOrWhiteSpace(translatedText))
+            {
+                var result = TranslationResult.Fail(TranslationErrorKind.EmptyResponse, "API 返回为空，请稍后重试。");
+                await onEvent(TranslationStreamEvent.Failed(result), timeoutCts.Token);
+                return result;
+            }
+
+            stopwatch.Stop();
+            _logger.Info($"Streaming translation API completed in {stopwatch.ElapsedMilliseconds} ms.");
+            var completed = TranslationStreamEvent.Completed(translatedText);
+            await onEvent(completed, timeoutCts.Token);
+            return completed.Result!;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return TranslationResult.Fail(TranslationErrorKind.Cancelled, "翻译已取消。");
+        }
+        catch (OperationCanceledException)
+        {
+            var result = TranslationResult.Fail(TranslationErrorKind.Timeout, "网络请求超时，请稍后重试。");
+            await onEvent(TranslationStreamEvent.Failed(result), cancellationToken);
+            return result;
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.Warning($"Streaming translation network failure. {ex.Message}");
+            var result = TranslationResult.Fail(TranslationErrorKind.Network, "网络不可用或无法连接到 API。");
+            await onEvent(TranslationStreamEvent.Failed(result), cancellationToken);
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Unexpected streaming translation failure.", ex);
+            var result = TranslationResult.Fail(TranslationErrorKind.Unknown, "翻译失败，请稍后重试。");
+            await onEvent(TranslationStreamEvent.Failed(result), cancellationToken);
+            return result;
+        }
+    }
+
     internal static object CreatePayload(string model, TranslationRequest request)
+    {
+        return CreatePayload(model, request, stream: false);
+    }
+
+    internal static object CreatePayload(string model, TranslationRequest request, bool stream)
     {
         return new
         {
@@ -118,8 +237,120 @@ public sealed class OpenAiTranslationService : ITranslationService
                 request.TargetLanguage,
                 request.PreserveFormatting,
                 request.SystemPrompt),
-            input = TranslationPromptBuilder.BuildInput(request.SourceText)
+            input = TranslationPromptBuilder.BuildInput(request.SourceText),
+            stream
         };
+    }
+
+    internal static TranslationStreamEvent? ParseStreamingEvent(
+        string eventName,
+        string data,
+        StringBuilder accumulatedText)
+    {
+        if (string.Equals(data.Trim(), "[DONE]", StringComparison.Ordinal))
+        {
+            return TranslationStreamEvent.Completed(accumulatedText.ToString());
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(data);
+            var root = document.RootElement;
+            var type = !string.IsNullOrWhiteSpace(eventName)
+                ? eventName
+                : root.TryGetProperty("type", out var typeElement) && typeElement.ValueKind == JsonValueKind.String
+                    ? typeElement.GetString()
+                    : null;
+
+            if (string.Equals(type, "response.output_text.delta", StringComparison.Ordinal)
+                && root.TryGetProperty("delta", out var deltaElement)
+                && deltaElement.ValueKind == JsonValueKind.String)
+            {
+                var delta = deltaElement.GetString();
+                if (string.IsNullOrEmpty(delta))
+                {
+                    return null;
+                }
+
+                accumulatedText.Append(delta);
+                return TranslationStreamEvent.Delta(delta, accumulatedText.ToString());
+            }
+
+            if (string.Equals(type, "response.output_text.done", StringComparison.Ordinal)
+                && root.TryGetProperty("text", out var textElement)
+                && textElement.ValueKind == JsonValueKind.String)
+            {
+                accumulatedText.Clear();
+                accumulatedText.Append(textElement.GetString());
+                return null;
+            }
+
+            if (string.Equals(type, "response.completed", StringComparison.Ordinal))
+            {
+                return TranslationStreamEvent.Completed(accumulatedText.ToString());
+            }
+
+            if (string.Equals(type, "error", StringComparison.Ordinal)
+                || string.Equals(type, "response.failed", StringComparison.Ordinal)
+                || root.TryGetProperty("error", out _))
+            {
+                var message = ExtractProviderError(data) ?? "流式翻译失败，请稍后重试。";
+                return TranslationStreamEvent.Failed(TranslationResult.Fail(TranslationErrorKind.Unknown, message));
+            }
+        }
+        catch (JsonException)
+        {
+            return TranslationStreamEvent.Failed(
+                TranslationResult.Fail(TranslationErrorKind.InvalidRequest, "API 返回的流式响应无效，请稍后重试。"));
+        }
+
+        return null;
+    }
+
+    private static async Task<SseMessage?> ReadSseMessageAsync(StreamReader reader, CancellationToken cancellationToken)
+    {
+        var eventName = string.Empty;
+        var data = new StringBuilder();
+
+        while (true)
+        {
+            var line = await reader.ReadLineAsync(cancellationToken);
+            if (line is null)
+            {
+                return data.Length == 0 ? null : new SseMessage(eventName, data.ToString());
+            }
+
+            if (line.Length == 0)
+            {
+                if (data.Length == 0)
+                {
+                    continue;
+                }
+
+                return new SseMessage(eventName, data.ToString());
+            }
+
+            if (line.StartsWith(':'))
+            {
+                continue;
+            }
+
+            if (line.StartsWith("event:", StringComparison.Ordinal))
+            {
+                eventName = line["event:".Length..].Trim();
+                continue;
+            }
+
+            if (line.StartsWith("data:", StringComparison.Ordinal))
+            {
+                if (data.Length > 0)
+                {
+                    data.Append('\n');
+                }
+
+                data.Append(line["data:".Length..].TrimStart());
+            }
+        }
     }
 
     internal static Uri BuildResponsesUri(string baseUrl)
@@ -218,6 +449,16 @@ public sealed class OpenAiTranslationService : ITranslationService
                     return error.GetString();
                 }
             }
+
+            if (document.RootElement.TryGetProperty("response", out var response)
+                && response.ValueKind == JsonValueKind.Object
+                && response.TryGetProperty("error", out var responseError)
+                && responseError.ValueKind == JsonValueKind.Object
+                && responseError.TryGetProperty("message", out var responseMessage)
+                && responseMessage.ValueKind == JsonValueKind.String)
+            {
+                return responseMessage.GetString();
+            }
         }
         catch
         {
@@ -226,4 +467,6 @@ public sealed class OpenAiTranslationService : ITranslationService
 
         return null;
     }
+
+    private sealed record SseMessage(string EventName, string Data);
 }

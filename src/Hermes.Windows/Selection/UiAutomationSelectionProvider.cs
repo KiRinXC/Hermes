@@ -17,34 +17,49 @@ public sealed class UiAutomationSelectionProvider : ISelectionProvider
     public Task<SelectionResult> TryGetSelectionAsync(CancellationToken cancellationToken = default)
     {
         var foreground = _foregroundWindowService.GetForegroundWindowInfo();
+        return Task.Run(() => TryGetSelection(foreground, cancellationToken));
+    }
+
+    private SelectionResult TryGetSelection(ForegroundWindowInfo? foreground, CancellationToken cancellationToken)
+    {
         try
         {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return SelectionResult.Empty("读取选区已取消。", foreground);
+            }
+
             var focused = AutomationElement.FocusedElement;
             if (focused is null || focused.Current.IsPassword)
             {
-                return Task.FromResult(SelectionResult.Empty("当前控件不支持读取选区。", foreground));
+                return SelectionResult.Empty("当前控件不支持读取选区。", foreground);
             }
 
             if (!focused.TryGetCurrentPattern(TextPattern.Pattern, out var patternObject)
                 || patternObject is not TextPattern textPattern)
             {
-                return Task.FromResult(SelectionResult.Empty("当前控件未暴露文本选区。", foreground));
+                return SelectionResult.Empty("当前控件未暴露文本选区。", foreground);
             }
 
             var ranges = textPattern.GetSelection();
             foreach (var range in ranges)
             {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return SelectionResult.Empty("读取选区已取消。", foreground);
+                }
+
                 var text = range.GetText(-1)?.Trim();
                 if (string.IsNullOrWhiteSpace(text))
                 {
                     continue;
                 }
 
-                return Task.FromResult(SelectionResult.FromText(
+                return SelectionResult.FromText(
                     text,
                     SelectionProviderKind.UiAutomation,
                     TryGetBounds(range),
-                    foreground));
+                    foreground);
             }
         }
         catch (Exception ex)
@@ -52,7 +67,7 @@ public sealed class UiAutomationSelectionProvider : ISelectionProvider
             _logger.Warning($"UI Automation selection read failed. {ex.Message}");
         }
 
-        return Task.FromResult(SelectionResult.Empty("无法通过 UI Automation 读取选区。", foreground));
+        return SelectionResult.Empty("无法通过 UI Automation 读取选区。", foreground);
     }
 
     private static ScreenBounds? TryGetBounds(dynamic range)

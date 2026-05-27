@@ -113,6 +113,16 @@ public sealed class OverlayManager
         _popup?.SetTranslation(translation);
     }
 
+    public void AppendTranslationDelta(string deltaText)
+    {
+        _popup?.AppendTranslationDelta(deltaText);
+    }
+
+    public void CompleteStreamingTranslation(string translation)
+    {
+        _popup?.CompleteStreamingTranslation(translation);
+    }
+
     public void SetError(string message, bool showSettings)
     {
         _popup?.SetError(message, showSettings);
@@ -130,6 +140,15 @@ public sealed class OverlayManager
     public void CloseUnpinnedPopup()
     {
         if (_popup is { IsPinned: false })
+        {
+            _popup.CloseWithFade();
+            _popup = null;
+        }
+    }
+
+    public void CloseCompletedUnpinnedPopup()
+    {
+        if (_popup is { IsPinned: false, HasCompletedTranslation: true })
         {
             _popup.CloseWithFade();
             _popup = null;

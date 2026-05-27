@@ -37,4 +37,12 @@ public sealed class TriggerDiagnosticsService
             return _entries.Reverse().ToList();
         }
     }
+
+    public void Clear()
+    {
+        lock (_gate)
+        {
+            _entries.Clear();
+        }
+    }
 }

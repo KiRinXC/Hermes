@@ -14,6 +14,7 @@ if (-not (Test-Path $dotnetExe)) {
 
 $dotnetHome = Join-Path $repoRoot ".dotnet-home"
 $nugetRoot = Join-Path $repoRoot ".nuget"
+$nugetOffline = Join-Path $nugetRoot "offline"
 
 $env:DOTNET_ROOT = $DotnetRoot
 $env:DOTNET_CLI_HOME = $dotnetHome
@@ -36,6 +37,7 @@ if ($UseLocalProxy) {
     $env:LOCALAPPDATA,
     $env:DOTNET_CLI_HOME,
     $env:NUGET_PACKAGES,
+    $nugetOffline,
     $env:NUGET_HTTP_CACHE_PATH,
     $env:NUGET_PLUGINS_CACHE_PATH,
     $env:NUGET_SCRATCH
@@ -46,6 +48,7 @@ if ($UseLocalProxy) {
 $Global:HermesRepoRoot = $repoRoot
 $Global:HermesDotnetExe = $dotnetExe
 $Global:HermesNuGetConfig = Join-Path $repoRoot "NuGet.Config"
+$Global:HermesNuGetOffline = $nugetOffline
 
 Write-Host "Hermes environment is ready."
 Write-Host "Repo:   $repoRoot"

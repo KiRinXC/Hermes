@@ -1,12 +1,54 @@
+# Local agent / planning workspace
 .codex/
-
-docs/
-
 openspec/
 
+# Build output
 bin/
 obj/
+artifacts/
+TestResults/
+coverage/
+*.coverage
+*.coveragexml
+*.trx
+
+# Local .NET / NuGet environment
 .dotnet-home/
 .nuget/
-artifacts/
+packages/
+*.nupkg
+*.snupkg
 
+# IDE and editor state
+.vs/
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Logs and runtime state
+*.log
+logs/
+settings.json
+secrets.dat
+history.json
+
+# Secrets and signing material
+.env
+.env.*
+*.pfx
+*.p12
+*.pem
+*.key
+
+# Release archives generated outside artifacts/
+*.zip
+*.7z
+*.rar
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini

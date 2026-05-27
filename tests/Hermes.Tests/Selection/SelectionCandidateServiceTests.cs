@@ -11,6 +11,7 @@ public static class SelectionCandidateServiceTests
         suite.Add("rejects low distance selection candidate", RejectsLowDistanceCandidate);
         suite.Add("rejects no ctrl selection candidate", RejectsNoCtrlSelectionCandidate);
         suite.Add("rejects released ctrl selection candidate", RejectsReleasedCtrlSelectionCandidate);
+        suite.Add("ignores no ctrl candidate before evaluation", IgnoresNoCtrlCandidateBeforeEvaluation);
         suite.Add("rejects excluded app selection candidate", RejectsExcludedAppSelectionCandidate);
         suite.Add("rejects disabled automatic selection", RejectsDisabledAutomaticSelection);
         suite.Add("rejects expired selection candidate", RejectsExpiredCandidate);
@@ -63,6 +64,22 @@ public static class SelectionCandidateServiceTests
             isSensitive: false);
         TestAssert.False(decision.ShouldShow);
         TestAssert.Equal("ctrl-not-held", decision.Reason);
+    }
+
+    private static void IgnoresNoCtrlCandidateBeforeEvaluation()
+    {
+        TestAssert.True(SelectionCandidateService.ShouldIgnoreBeforeEvaluation(
+            ctrlDownAtStart: false,
+            ctrlHeldDuringDrag: false,
+            ctrlDownAtRelease: false));
+        TestAssert.True(SelectionCandidateService.ShouldIgnoreBeforeEvaluation(
+            ctrlDownAtStart: true,
+            ctrlHeldDuringDrag: true,
+            ctrlDownAtRelease: false));
+        TestAssert.False(SelectionCandidateService.ShouldIgnoreBeforeEvaluation(
+            ctrlDownAtStart: true,
+            ctrlHeldDuringDrag: true,
+            ctrlDownAtRelease: true));
     }
 
     private static void RejectsExcludedAppSelectionCandidate()

@@ -35,6 +35,11 @@ public sealed class SelectionCandidateService
         bool ctrlDownAtRelease,
         CancellationToken cancellationToken = default)
     {
+        if (ShouldIgnoreBeforeEvaluation(ctrlDownAtStart, ctrlHeldDuringDrag, ctrlDownAtRelease))
+        {
+            return SelectionCandidateDecision.Reject("ctrl-not-held");
+        }
+
         var foreground = _foregroundWindowService.GetForegroundWindowInfo();
         var input = new SelectionCandidateInput(
             startX,
@@ -63,6 +68,11 @@ public sealed class SelectionCandidateService
         var accepted = SelectionCandidateDecision.Accept(decision.Candidate, "gesture-confidence");
         _diagnosticsService.Record("mouse-selection", "button-shown", foreground, accepted.Reason);
         return accepted;
+    }
+
+    internal static bool ShouldIgnoreBeforeEvaluation(bool ctrlDownAtStart, bool ctrlHeldDuringDrag, bool ctrlDownAtRelease)
+    {
+        return !ctrlDownAtStart || !ctrlHeldDuringDrag || !ctrlDownAtRelease;
     }
 
     public static bool IsExpired(SelectionCandidate candidate, DateTimeOffset? now = null)

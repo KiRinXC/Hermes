@@ -81,9 +81,9 @@ public sealed class MouseHookService : IDisposable
         switch (message)
         {
             case NativeMethods.WmLButtonDown:
-                _isLeftDown = true;
-                _hasMoved = false;
                 _ctrlDownAtStart = KeyboardModifierState.IsCtrlDown();
+                _isLeftDown = ShouldTrackSelectionGesture(_ctrlDownAtStart);
+                _hasMoved = false;
                 _ctrlHeldDuringDrag = _ctrlDownAtStart;
                 _downPoint = point;
                 _downAt = DateTimeOffset.Now;
@@ -103,7 +103,8 @@ public sealed class MouseHookService : IDisposable
                 break;
             case NativeMethods.WmLButtonUp:
                 var completedSelectionGesture = false;
-                if (_isLeftDown && _hasMoved)
+                var ctrlDownAtRelease = KeyboardModifierState.IsCtrlDown();
+                if (_isLeftDown && _hasMoved && ShouldEmitSelectionGesture(_ctrlDownAtStart, _ctrlHeldDuringDrag, ctrlDownAtRelease))
                 {
                     completedSelectionGesture = true;
                     SelectionGestureCompleted?.Invoke(
@@ -117,7 +118,7 @@ public sealed class MouseHookService : IDisposable
                             DateTimeOffset.Now,
                             _ctrlDownAtStart,
                             _ctrlHeldDuringDrag,
-                            KeyboardModifierState.IsCtrlDown()));
+                            ctrlDownAtRelease));
                 }
 
                 _isLeftDown = false;
@@ -141,6 +142,16 @@ public sealed class MouseHookService : IDisposable
         var dx = a.X - b.X;
         var dy = a.Y - b.Y;
         return Math.Sqrt(dx * dx + dy * dy);
+    }
+
+    internal static bool ShouldTrackSelectionGesture(bool ctrlDownAtStart)
+    {
+        return ctrlDownAtStart;
+    }
+
+    internal static bool ShouldEmitSelectionGesture(bool ctrlDownAtStart, bool ctrlHeldDuringDrag, bool ctrlDownAtRelease)
+    {
+        return ctrlDownAtStart && ctrlHeldDuringDrag && ctrlDownAtRelease;
     }
 }
 

@@ -17,6 +17,7 @@ namespace Hermes.Windows.Shell;
 public partial class SettingsWindow : Window
 {
     private const string ApiKeyMask = "********";
+    private const double ShellCornerRadius = 14;
 
     private readonly SettingsService _settingsService;
     private readonly ISecretStorageService _secretStorage;
@@ -27,6 +28,8 @@ public partial class SettingsWindow : Window
     private readonly AppLogger _logger;
     private bool _isLoadingSettings;
     private bool _apiKeyVisible;
+    private bool _isRecordingHotkey;
+    private string? _hotkeyBeforeRecording;
 
     public SettingsWindow(
         SettingsService settingsService,
@@ -63,6 +66,7 @@ public partial class SettingsWindow : Window
 
     private void Window_Loaded(object sender, RoutedEventArgs e)
     {
+        UpdateRootShellClip();
         BeginEntranceAnimation();
         MoveThemeSegmentIndicator(animate: false);
     }
@@ -214,11 +218,13 @@ public partial class SettingsWindow : Window
 
     private async void ClearHistory_Click(object sender, RoutedEventArgs e)
     {
-        SetBusy(true, "正在清空历史...");
+        SetBusy(true, "正在清空记录...");
         try
         {
             await _historyService.ClearAsync();
-            StatusText.Text = "历史已清空。";
+            _triggerDiagnosticsService.Clear();
+            RefreshDiagnostics();
+            StatusText.Text = "历史和触发诊断已清空。";
         }
         finally
         {
@@ -317,7 +323,7 @@ public partial class SettingsWindow : Window
                     sizeof(int));
             }
 
-            var backdrop = NativeMethods.DwmSystemBackdropTypeMica;
+            var backdrop = NativeMethods.DwmSystemBackdropTypeNone;
             _ = NativeMethods.DwmSetWindowAttribute(
                 hwnd,
                 NativeMethods.DwmwaSystemBackdropType,
@@ -351,6 +357,24 @@ public partial class SettingsWindow : Window
         };
         RootShellScaleTransform.BeginAnimation(ScaleTransform.ScaleXProperty, scaleX);
         RootShellScaleTransform.BeginAnimation(ScaleTransform.ScaleYProperty, scaleY);
+    }
+
+    private void RootShell_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        UpdateRootShellClip();
+    }
+
+    private void UpdateRootShellClip()
+    {
+        if (RootShell.ActualWidth <= 0 || RootShell.ActualHeight <= 0)
+        {
+            return;
+        }
+
+        RootShell.Clip = new RectangleGeometry(
+            new Rect(0, 0, RootShell.ActualWidth, RootShell.ActualHeight),
+            ShellCornerRadius,
+            ShellCornerRadius);
     }
 
     private void TitleBar_MouseLeftButtonDown(object sender, WpfInput.MouseButtonEventArgs e)
@@ -419,23 +443,63 @@ public partial class SettingsWindow : Window
         }
     }
 
+    private void SettingsTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (e.Source is not System.Windows.Controls.TabControl || WpfInput.Mouse.LeftButton != WpfInput.MouseButtonState.Pressed)
+        {
+            return;
+        }
+
+        _ = Dispatcher.BeginInvoke(
+            new Action(ClearSettingsTabMouseFocus),
+            System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+    }
+
+    private void ClearSettingsTabMouseFocus()
+    {
+        if (_isRecordingHotkey)
+        {
+            return;
+        }
+
+        WpfInput.FocusManager.SetFocusedElement(this, null);
+        WpfInput.Keyboard.ClearFocus();
+    }
+
     private void HeaderHotkeyButton_Click(object sender, RoutedEventArgs e)
     {
-        HeaderHotkeyButton.Focus();
-        StatusText.Text = "请按下新的快捷键组合。";
+        if (_isRecordingHotkey)
+        {
+            CancelHotkeyRecording();
+            return;
+        }
+
+        BeginHotkeyRecording();
     }
 
     private void HotkeyRecorder_LostKeyboardFocus(object sender, WpfInput.KeyboardFocusChangedEventArgs e)
     {
-        HeaderHotkeyButton.Effect = null;
+        CancelHotkeyRecording();
     }
 
     private void HotkeyRecorder_PreviewKeyDown(object sender, WpfInput.KeyEventArgs e)
     {
+        if (!_isRecordingHotkey)
+        {
+            return;
+        }
+
         var key = e.Key == WpfInput.Key.System ? e.SystemKey : e.Key;
         if (key == WpfInput.Key.ImeProcessed)
         {
             key = e.ImeProcessedKey;
+        }
+
+        if (key == WpfInput.Key.Escape)
+        {
+            CancelHotkeyRecording();
+            e.Handled = true;
+            return;
         }
 
         if (IsModifierKey(key))
@@ -468,7 +532,6 @@ public partial class SettingsWindow : Window
 
         if (parts.Count == 0)
         {
-            StatusText.Text = "快捷键需要包含 Ctrl、Alt、Shift 或 Win 中至少一个修饰键。";
             e.Handled = true;
             return;
         }
@@ -476,8 +539,56 @@ public partial class SettingsWindow : Window
         parts.Add(FormatKey(key));
         var hotkey = string.Join("+", parts);
         UpdateHeaderHotkey(hotkey);
-        StatusText.Text = "快捷键已录制，保存后生效。";
+        FinishHotkeyRecording();
         e.Handled = true;
+    }
+
+    private void Window_PreviewMouseDown(object sender, WpfInput.MouseButtonEventArgs e)
+    {
+        if (!_isRecordingHotkey || IsWithinElement(e.OriginalSource as DependencyObject, HeaderHotkeyButton))
+        {
+            return;
+        }
+
+        CancelHotkeyRecording();
+    }
+
+    private void BeginHotkeyRecording()
+    {
+        _isRecordingHotkey = true;
+        _hotkeyBeforeRecording = GetHeaderHotkeyText();
+        HeaderHotkeyButton.Focus();
+    }
+
+    private void FinishHotkeyRecording()
+    {
+        _isRecordingHotkey = false;
+        _hotkeyBeforeRecording = null;
+        ClearHotkeyButtonFocus();
+    }
+
+    private void CancelHotkeyRecording()
+    {
+        if (!_isRecordingHotkey)
+        {
+            return;
+        }
+
+        _isRecordingHotkey = false;
+        if (!string.IsNullOrWhiteSpace(_hotkeyBeforeRecording))
+        {
+            UpdateHeaderHotkey(_hotkeyBeforeRecording);
+        }
+
+        _hotkeyBeforeRecording = null;
+        ClearHotkeyButtonFocus();
+    }
+
+    private void ClearHotkeyButtonFocus()
+    {
+        HeaderHotkeyButton.Effect = null;
+        WpfInput.FocusManager.SetFocusedElement(this, null);
+        WpfInput.Keyboard.ClearFocus();
     }
 
     private void UpdateAppearanceValueText()
@@ -559,6 +670,16 @@ public partial class SettingsWindow : Window
         var parts = hotkey.Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         foreach (var part in parts)
         {
+            var label = new TextBlock
+            {
+                Text = part,
+                FontSize = 10,
+                FontFamily = new System.Windows.Media.FontFamily("Segoe UI Variable Display, Segoe UI"),
+                HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            label.SetResourceReference(TextBlock.ForegroundProperty, "Settings.TextMutedBrush");
+
             var keycap = new Border
             {
                 MinWidth = 26,
@@ -566,19 +687,11 @@ public partial class SettingsWindow : Window
                 Margin = new Thickness(HeaderHotkeyKeys.Children.Count == 0 ? 0 : 4, 0, 0, 0),
                 Padding = new Thickness(6, 0, 6, 1),
                 CornerRadius = new CornerRadius(4),
-                Background = FindResource("Settings.KeycapBrush") as System.Windows.Media.Brush,
-                BorderBrush = FindResource("Settings.KeycapBorderBrush") as System.Windows.Media.Brush,
                 BorderThickness = new Thickness(1),
-                Child = new TextBlock
-                {
-                    Text = part,
-                    FontSize = 10,
-                    FontFamily = new System.Windows.Media.FontFamily("Segoe UI Variable Display, Segoe UI"),
-                    Foreground = FindResource("Settings.TextMutedBrush") as System.Windows.Media.Brush,
-                    HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
-                    VerticalAlignment = VerticalAlignment.Center
-                }
+                Child = label
             };
+            keycap.SetResourceReference(Border.BackgroundProperty, "Settings.KeycapBrush");
+            keycap.SetResourceReference(Border.BorderBrushProperty, "Settings.KeycapBorderBrush");
             HeaderHotkeyKeys.Children.Add(keycap);
         }
     }
@@ -605,6 +718,10 @@ public partial class SettingsWindow : Window
         SetSolidBrush("Settings.BorderBrush", palette.Border);
         SetSolidBrush("Settings.DividerBrush", palette.Divider);
         SetSolidBrush("Settings.FaintDividerBrush", palette.FaintDivider);
+        SetSolidBrush("Settings.SegmentTrackBrush", palette.SegmentTrack);
+        SetSolidBrush("Settings.SegmentIndicatorBrush", palette.SegmentIndicator);
+        SetSolidBrush("Settings.SegmentIndicatorBorderBrush", palette.SegmentIndicatorBorder);
+        SetSolidBrush("Settings.KeycapShellBrush", palette.KeycapShell);
         SetSolidBrush("Settings.KeycapBrush", palette.Keycap);
         SetSolidBrush("Settings.KeycapBorderBrush", palette.KeycapBorder);
         SetSolidBrush("Settings.ToggleTrackBrush", palette.ToggleTrack);
@@ -663,6 +780,27 @@ public partial class SettingsWindow : Window
             or WpfInput.Key.RightShift
             or WpfInput.Key.LWin
             or WpfInput.Key.RWin;
+    }
+
+    private static bool IsWithinElement(DependencyObject? source, DependencyObject target)
+    {
+        var current = source;
+        while (current is not null)
+        {
+            if (ReferenceEquals(current, target))
+            {
+                return true;
+            }
+
+            current = current switch
+            {
+                FrameworkElement element => element.Parent ?? VisualTreeHelper.GetParent(element),
+                FrameworkContentElement contentElement => contentElement.Parent,
+                _ => VisualTreeHelper.GetParent(current)
+            };
+        }
+
+        return false;
     }
 
     private static string FormatKey(WpfInput.Key key)

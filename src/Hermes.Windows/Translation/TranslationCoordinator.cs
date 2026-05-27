@@ -3,6 +3,7 @@ using Hermes.Windows.Infrastructure;
 using Hermes.Windows.Overlay;
 using Hermes.Windows.Selection;
 using Hermes.Windows.Settings;
+using System.Text;
 using System.Windows.Threading;
 
 namespace Hermes.Windows.Translation;
@@ -86,6 +87,11 @@ public sealed class TranslationCoordinator
         bool ctrlDownAtRelease,
         CancellationToken cancellationToken = default)
     {
+        if (ShouldIgnorePassiveMouseGesture(ctrlDownAtStart, ctrlHeldDuringDrag, ctrlDownAtRelease))
+        {
+            return;
+        }
+
         await Task.Delay(90, cancellationToken);
         var decision = await _selectionCandidateService.CreateFromMouseGestureAsync(
             startX,
@@ -110,10 +116,21 @@ public sealed class TranslationCoordinator
         _overlayManager.CloseFloatingButton();
     }
 
+    public void ClosePassiveUiAfterPointerActivity()
+    {
+        _overlayManager.CloseFloatingButton();
+        _overlayManager.CloseCompletedUnpinnedPopup();
+    }
+
     public void CloseAll()
     {
         _currentRequestCts?.Cancel();
         _overlayManager.CloseAll();
+    }
+
+    internal static bool ShouldIgnorePassiveMouseGesture(bool ctrlDownAtStart, bool ctrlHeldDuringDrag, bool ctrlDownAtRelease)
+    {
+        return !ctrlDownAtStart || !ctrlHeldDuringDrag || !ctrlDownAtRelease;
     }
 
     private Task TranslateSelectionAsync(SelectionResult selection)
@@ -198,11 +215,68 @@ public sealed class TranslationCoordinator
             _settingsService.Current.Translation.PreserveFormatting,
             _settingsService.Current.Translation.SystemPrompt);
 
-        var result = await _translationService.TranslateAsync(request, requestToken);
+        var pendingStreamDelta = new StringBuilder();
+        var lastStreamFlush = DateTimeOffset.MinValue;
+        var streamFlushInterval = TimeSpan.FromMilliseconds(40);
+        var result = await _translationService.TranslateStreamAsync(
+            request,
+            async (streamEvent, token) =>
+            {
+                if (token.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                switch (streamEvent.Kind)
+                {
+                    case TranslationStreamEventKind.Delta when streamEvent.DeltaText is not null:
+                        pendingStreamDelta.Append(streamEvent.DeltaText);
+                        var now = DateTimeOffset.UtcNow;
+                        if (now - lastStreamFlush < streamFlushInterval)
+                        {
+                            return;
+                        }
+
+                        var deltaText = pendingStreamDelta.ToString();
+                        pendingStreamDelta.Clear();
+                        lastStreamFlush = now;
+                        await InvokePopupAsync(popup, token, () => _overlayManager.AppendTranslationDelta(deltaText));
+                        break;
+                    case TranslationStreamEventKind.Completed when streamEvent.CurrentText is not null:
+                        var finalDelta = pendingStreamDelta.ToString();
+                        pendingStreamDelta.Clear();
+                        await InvokePopupAsync(
+                            popup,
+                            token,
+                            () =>
+                            {
+                                if (!string.IsNullOrEmpty(finalDelta))
+                                {
+                                    _overlayManager.AppendTranslationDelta(finalDelta);
+                                }
+
+                                _overlayManager.CompleteStreamingTranslation(streamEvent.CurrentText);
+                            });
+                        break;
+                    case TranslationStreamEventKind.Failed when streamEvent.Result is not null:
+                        pendingStreamDelta.Clear();
+                        await InvokePopupAsync(
+                            popup,
+                            token,
+                            () =>
+                        {
+                            _overlayManager.SetError(
+                                streamEvent.Result.UserMessage ?? "翻译失败，请稍后重试。",
+                                streamEvent.Result.ErrorKind is TranslationErrorKind.MissingApiKey or TranslationErrorKind.Authentication);
+                        });
+                        break;
+                }
+            },
+            requestToken);
 
         if (result.Success && result.TranslatedText is not null)
         {
-            _overlayManager.SetTranslation(result.TranslatedText);
+            _overlayManager.CompleteStreamingTranslation(result.TranslatedText);
             await _historyService.SaveAsync(selection.Text, result.TranslatedText, requestToken);
         }
         else if (result.ErrorKind != TranslationErrorKind.Cancelled)
@@ -212,5 +286,19 @@ public sealed class TranslationCoordinator
                 result.ErrorKind is TranslationErrorKind.MissingApiKey or TranslationErrorKind.Authentication);
         }
         _currentRequestCts?.Cancel();
+    }
+
+    private static async Task InvokePopupAsync(TranslationPopupWindow popup, CancellationToken token, Action update)
+    {
+        await popup.Dispatcher.InvokeAsync(
+            () =>
+            {
+                if (!token.IsCancellationRequested)
+                {
+                    update();
+                }
+            },
+            DispatcherPriority.Background,
+            token);
     }
 }

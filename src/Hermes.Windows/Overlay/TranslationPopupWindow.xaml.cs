@@ -1,9 +1,12 @@
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Text;
 using Hermes.Windows.Infrastructure;
 using Forms = System.Windows.Forms;
 using WpfBrush = System.Windows.Media.Brush;
@@ -14,11 +17,13 @@ namespace Hermes.Windows.Overlay;
 public partial class TranslationPopupWindow : Window
 {
     private readonly System.Windows.Threading.DispatcherTimer _copyResetTimer;
+    private readonly StringBuilder _streamingText = new();
     private string? _translatedText;
     private string? _sourcePreview;
     private bool _isPinned;
     private bool _clamping;
     private bool _isClosing;
+    private bool _hasStreamingText;
     private double _targetOpacity = 1;
 
     public TranslationPopupWindow()
@@ -34,6 +39,8 @@ public partial class TranslationPopupWindow : Window
     }
 
     public bool IsPinned => _isPinned;
+
+    public bool HasCompletedTranslation => !string.IsNullOrEmpty(_translatedText);
 
     public event EventHandler? RetryRequested;
 
@@ -83,6 +90,8 @@ public partial class TranslationPopupWindow : Window
     public void SetLoading()
     {
         _translatedText = null;
+        _streamingText.Clear();
+        _hasStreamingText = false;
         CopyButton.IsEnabled = false;
         ErrorPanel.Visibility = Visibility.Collapsed;
         LongRunningPanel.Visibility = Visibility.Collapsed;
@@ -90,7 +99,7 @@ public partial class TranslationPopupWindow : Window
         ProgressRail.Visibility = Visibility.Visible;
         ProgressRail.BeginAnimation(OpacityProperty, null);
         ProgressRail.Opacity = 1;
-        StateText.Text = "Hermes 正在转译...";
+        StateText.Text = "正在转译...";
         StateText.Foreground = (WpfBrush)FindResource("Brush.TextMuted");
         BodyText.Inlines.Clear();
         BodyText.Inlines.Add(new Run("正在翻译"));
@@ -99,7 +108,7 @@ public partial class TranslationPopupWindow : Window
 
     public void SetLongRunning()
     {
-        if (_translatedText is not null)
+        if (_translatedText is not null || _hasStreamingText)
         {
             return;
         }
@@ -114,6 +123,8 @@ public partial class TranslationPopupWindow : Window
     public void SetTranslation(string translatedText)
     {
         _translatedText = translatedText;
+        _streamingText.Clear();
+        _hasStreamingText = false;
         CopyButton.IsEnabled = true;
         ErrorPanel.Visibility = Visibility.Collapsed;
         LongRunningPanel.Visibility = Visibility.Collapsed;
@@ -126,9 +137,35 @@ public partial class TranslationPopupWindow : Window
         AnimateBodyReveal();
     }
 
+    public void AppendTranslationDelta(string deltaText)
+    {
+        if (string.IsNullOrEmpty(deltaText))
+        {
+            return;
+        }
+
+        _streamingText.Append(deltaText);
+        _hasStreamingText = true;
+        CopyButton.IsEnabled = false;
+        ErrorPanel.Visibility = Visibility.Collapsed;
+        LongRunningPanel.Visibility = Visibility.Collapsed;
+        SpinnerRotateTransform.BeginAnimation(RotateTransform.AngleProperty, null);
+        BodyScroll.Visibility = Visibility.Visible;
+        StateText.Text = "正在转译...";
+        StateText.Foreground = (WpfBrush)FindResource("Brush.TextMuted");
+        RenderTranslatedText(_streamingText.ToString());
+    }
+
+    public void CompleteStreamingTranslation(string translatedText)
+    {
+        SetTranslation(translatedText);
+    }
+
     public void SetError(string message, bool showSettings)
     {
         _translatedText = null;
+        _streamingText.Clear();
+        _hasStreamingText = false;
         CopyButton.IsEnabled = false;
         SettingsButton.Visibility = showSettings ? Visibility.Visible : Visibility.Collapsed;
         LongRunningPanel.Visibility = Visibility.Collapsed;
@@ -179,12 +216,43 @@ public partial class TranslationPopupWindow : Window
         CloseWithFade();
     }
 
-    private void DragSurface_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    private void Card_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.ButtonState == MouseButtonState.Pressed)
+        if (e.ButtonState != MouseButtonState.Pressed || IsInteractiveDragSource(e.OriginalSource))
         {
-            DragMove();
+            return;
         }
+
+        DragMove();
+    }
+
+    internal static bool IsInteractiveDragSource(object? source)
+    {
+        var current = source;
+        while (current is not null)
+        {
+            if (current is System.Windows.Controls.Primitives.ButtonBase
+                or System.Windows.Controls.Primitives.TextBoxBase
+                or PasswordBox
+                or System.Windows.Controls.ComboBox
+                or Slider
+                or System.Windows.Controls.Primitives.ScrollBar
+                or Thumb
+                or Hyperlink)
+            {
+                return true;
+            }
+
+            current = current switch
+            {
+                FrameworkElement element => element.Parent ?? VisualTreeHelper.GetParent(element),
+                FrameworkContentElement contentElement => contentElement.Parent,
+                DependencyObject dependencyObject => VisualTreeHelper.GetParent(dependencyObject),
+                _ => null
+            };
+        }
+
+        return false;
     }
 
     private void RenderSourcePreview()
@@ -231,7 +299,7 @@ public partial class TranslationPopupWindow : Window
                 return;
             }
 
-            BodyText.Inlines.Add(new Run(line[(start + 2)..end]) { FontWeight = FontWeights.SemiBold });
+            BodyText.Inlines.Add(new Run(line[(start + 2)..end]) { FontWeight = FontWeights.Medium });
             cursor = end + 2;
         }
     }

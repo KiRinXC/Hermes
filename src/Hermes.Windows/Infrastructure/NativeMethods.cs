@@ -22,6 +22,7 @@ internal static class NativeMethods
     public const int DwmwaUseImmersiveDarkMode = 20;
     public const int DwmwaUseImmersiveDarkModeBefore20H1 = 19;
     public const int DwmwaSystemBackdropType = 38;
+    public const int DwmSystemBackdropTypeNone = 1;
     public const int DwmSystemBackdropTypeMica = 2;
 
     public const uint ModAlt = 0x0001;

@@ -22,7 +22,7 @@
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="FontSize" Value="12"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontWeight" Value="Medium"/>
             <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="Template">
                 <Setter.Value>
@@ -145,6 +145,7 @@
             BorderBrush="{DynamicResource Brush.PopupBorder}"
             BorderThickness="1"
             Effect="{StaticResource Shadow.Overlay}"
+            PreviewMouseLeftButtonDown="Card_PreviewMouseLeftButtonDown"
             RenderTransformOrigin="0.5,0.1">
         <Border.RenderTransform>
             <TranslateTransform Y="10"/>
@@ -159,18 +160,33 @@
 
             <Grid x:Name="DragSurface"
                   Grid.Row="0"
-                  Margin="16,8,10,0"
-                  MouseLeftButtonDown="DragSurface_MouseLeftButtonDown">
+                  Margin="16,8,10,0">
                 <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Bottom">
+                <Border Width="24"
+                        Height="24"
+                        CornerRadius="8"
+                        Background="{DynamicResource Brush.SourcePanel}"
+                        BorderBrush="{DynamicResource Brush.PopupBorder}"
+                        BorderThickness="1"
+                        Margin="0,0,10,0"
+                        VerticalAlignment="Bottom">
+                    <Image Source="../Resources/AppIcon.png"
+                           Width="18"
+                           Height="18"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           RenderOptions.BitmapScalingMode="HighQuality"/>
+                </Border>
+                <StackPanel Grid.Column="1" VerticalAlignment="Bottom">
                     <TextBlock x:Name="StateText"
-                               Text="Hermes 正在转译..."
+                               Text="正在转译..."
                                FontFamily="Segoe UI Variable Text, Segoe UI, PingFang SC, Microsoft YaHei UI"
                                FontSize="12"
-                               FontWeight="SemiBold"
+                               FontWeight="Medium"
                                Foreground="{DynamicResource Brush.TextMuted}"/>
                     <Border x:Name="ProgressRail"
                             Height="1.5"
@@ -187,7 +203,7 @@
                         </Border>
                     </Border>
                 </StackPanel>
-                <Button Grid.Column="1"
+                <Button Grid.Column="2"
                         Style="{StaticResource CloseGlyphButton}"
                         ToolTip="关闭"
                         Click="CloseButton_Click"/>
@@ -225,7 +241,7 @@
                             <StackPanel>
                                 <TextBlock Text="原文"
                                            FontSize="12"
-                                           FontWeight="SemiBold"
+                                           FontWeight="Medium"
                                            Foreground="{DynamicResource Brush.TextMuted}"
                                            Margin="0,0,0,6"/>
                                 <TextBlock x:Name="SourcePreviewText"
@@ -286,7 +302,7 @@
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="打开设置"
                                            FontSize="12"
-                                           FontWeight="SemiBold"/>
+                                           FontWeight="Medium"/>
                             </StackPanel>
                         </Button>
                     </StackPanel>

@@ -18,14 +18,23 @@ public sealed class ClipboardSelectionProvider
     public async Task<SelectionResult> TryCopySelectionAsync(CancellationToken cancellationToken = default)
     {
         var foreground = _foregroundWindowService.GetForegroundWindowInfo();
-        var operation = System.Windows.Application.Current.Dispatcher.InvokeAsync(async () =>
+        return await RunOnStaThreadAsync(() =>
         {
             System.Windows.IDataObject? original = null;
             try
             {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return SelectionResult.Empty("剪贴板兜底已取消。", foreground);
+                }
+
                 original = System.Windows.Clipboard.GetDataObject();
                 Forms.SendKeys.SendWait("^c");
-                await Task.Delay(90, cancellationToken);
+                if (cancellationToken.WaitHandle.WaitOne(90))
+                {
+                    RestoreClipboard(original);
+                    return SelectionResult.Empty("剪贴板兜底已取消。", foreground);
+                }
 
                 var text = System.Windows.Clipboard.ContainsText() ? System.Windows.Clipboard.GetText() : string.Empty;
                 RestoreClipboard(original);
@@ -40,15 +49,13 @@ public sealed class ClipboardSelectionProvider
                 RestoreClipboard(original);
                 return SelectionResult.Empty("无法从剪贴板读取选区。", foreground);
             }
-        });
-
-        return await await operation.Task;
+        }, cancellationToken);
     }
 
     public async Task<SelectionResult> ReadClipboardTextAsync(CancellationToken cancellationToken = default)
     {
         var foreground = _foregroundWindowService.GetForegroundWindowInfo();
-        var operation = System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+        return await RunOnStaThreadAsync(() =>
         {
             try
             {
@@ -62,9 +69,7 @@ public sealed class ClipboardSelectionProvider
                 _logger.Warning($"Clipboard read failed. {ex.Message}");
                 return SelectionResult.Empty("无法读取剪贴板。", foreground);
             }
-        });
-
-        return await operation.Task;
+        }, cancellationToken);
     }
 
     private void RestoreClipboard(System.Windows.IDataObject? original)
@@ -82,5 +87,29 @@ public sealed class ClipboardSelectionProvider
         {
             _logger.Warning($"Clipboard restore failed. {ex.Message}");
         }
+    }
+
+    internal static Task<T> RunOnStaThreadAsync<T>(Func<T> action, CancellationToken cancellationToken = default)
+    {
+        var completion = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                completion.TrySetResult(action());
+            }
+            catch (Exception ex)
+            {
+                completion.TrySetException(ex);
+            }
+        })
+        {
+            IsBackground = true,
+            Name = "Hermes Clipboard STA"
+        };
+
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        return completion.Task;
     }
 }

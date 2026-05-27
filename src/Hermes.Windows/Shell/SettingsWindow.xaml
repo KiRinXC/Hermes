@@ -18,7 +18,8 @@
         SnapsToDevicePixels="True"
         UseLayoutRounding="True"
         Opacity="0"
-        Loaded="Window_Loaded">
+        Loaded="Window_Loaded"
+        PreviewMouseDown="Window_PreviewMouseDown">
     <Window.Resources>
         <SolidColorBrush x:Key="Settings.ShellBrush" Color="#F20A0A0C"/>
         <SolidColorBrush x:Key="Settings.TextPrimaryBrush" Color="#FFFFFFFF"/>
@@ -39,6 +40,10 @@
         <SolidColorBrush x:Key="Settings.ToggleTrackBrush" Color="#FF2C2C2E"/>
         <SolidColorBrush x:Key="Settings.SliderTrackBrush" Color="#FF2C2C2E"/>
         <SolidColorBrush x:Key="Settings.SliderThumbBrush" Color="#FFFFFFFF"/>
+        <SolidColorBrush x:Key="Settings.SegmentTrackBrush" Color="#14000000"/>
+        <SolidColorBrush x:Key="Settings.SegmentIndicatorBrush" Color="#26FFFFFF"/>
+        <SolidColorBrush x:Key="Settings.SegmentIndicatorBorderBrush" Color="#1FFFFFFF"/>
+        <SolidColorBrush x:Key="Settings.KeycapShellBrush" Color="#33000000"/>
 
         <LinearGradientBrush x:Key="Settings.OuterStrokeBrush" StartPoint="0,0" EndPoint="0,1">
             <GradientStop Color="#FF2C2C30" Offset="0"/>
@@ -91,7 +96,7 @@
             <Setter Property="BorderBrush" Value="#1FFFFFFF"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="FontSize" Value="12"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontWeight" Value="Medium"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="Template">
@@ -144,7 +149,7 @@
         <Style x:Key="Settings.KeycapButton" TargetType="{x:Type Button}">
             <Setter Property="Height" Value="28"/>
             <Setter Property="Padding" Value="7,3"/>
-            <Setter Property="Background" Value="#33000000"/>
+            <Setter Property="Background" Value="{DynamicResource Settings.KeycapShellBrush}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Settings.KeycapBorderBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Cursor" Value="Hand"/>
@@ -163,7 +168,7 @@
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource Settings.AccentBrush}"/>
-                                <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource Settings.ControlStrongBrush}"/>
+                                <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource Settings.KeycapBrush}"/>
                             </Trigger>
                             <Trigger Property="IsKeyboardFocused" Value="True">
                                 <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource Settings.AccentBrush}"/>
@@ -190,13 +195,13 @@
         <Style x:Key="Settings.CardTitle" TargetType="{x:Type TextBlock}">
             <Setter Property="Foreground" Value="{DynamicResource Settings.TextPrimaryBrush}"/>
             <Setter Property="FontSize" Value="14"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontWeight" Value="Medium"/>
         </Style>
 
         <Style x:Key="Settings.Label" TargetType="{x:Type TextBlock}">
             <Setter Property="Foreground" Value="{DynamicResource Settings.TextPrimaryBrush}"/>
             <Setter Property="FontSize" Value="13"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontWeight" Value="Medium"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
 
@@ -545,7 +550,7 @@
                             </Grid.RowDefinitions>
                             <TabPanel Grid.Row="0"
                                       IsItemsHost="True"
-                                      Margin="24,8,24,0"
+                                      Margin="24,12,24,0"
                                       HorizontalAlignment="Left"
                                       KeyboardNavigation.TabIndex="1"/>
                             <Border Grid.Row="1"
@@ -563,7 +568,7 @@
         <Style TargetType="{x:Type TabItem}">
             <Setter Property="Foreground" Value="{DynamicResource Settings.TextMutedBrush}"/>
             <Setter Property="FontSize" Value="12"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontWeight" Value="Medium"/>
             <Setter Property="MinWidth" Value="72"/>
             <Setter Property="Height" Value="22"/>
             <Setter Property="Padding" Value="0"/>
@@ -740,22 +745,22 @@
     </Window.Resources>
 
     <Border x:Name="RootShell"
-            Margin="8"
+            Margin="0"
             CornerRadius="14"
-            Background="{DynamicResource Settings.OuterStrokeBrush}"
-            Effect="{StaticResource Settings.ShellShadow}"
+            Background="{DynamicResource Settings.ShellBrush}"
+            ClipToBounds="True"
+            SizeChanged="RootShell_SizeChanged"
             RenderTransformOrigin="0.5,0.5">
         <Border.RenderTransform>
             <ScaleTransform x:Name="RootShellScaleTransform" ScaleX="0.95" ScaleY="0.95"/>
         </Border.RenderTransform>
-        <Border Margin="1"
-                CornerRadius="13"
+        <Border CornerRadius="14"
                 Background="{DynamicResource Settings.ShellBrush}">
             <Grid ClipToBounds="True">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="32"/>
-                    <RowDefinition Height="36"/>
-                    <RowDefinition Height="42"/>
+                    <RowDefinition Height="44"/>
+                    <RowDefinition Height="48"/>
                     <RowDefinition Height="*"/>
                     <RowDefinition Height="64"/>
                 </Grid.RowDefinitions>
@@ -797,7 +802,7 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <Grid Width="42" Height="36" Margin="0,0,10,0">
+                    <Grid Width="42" Height="36" Margin="0,0,18,0">
                         <Border Width="36"
                                 Height="36"
                                 CornerRadius="12"
@@ -824,7 +829,7 @@
                         <TextBlock Text="Hermes"
                                    Foreground="{DynamicResource Settings.TextPrimaryBrush}"
                                    FontSize="18"
-                                   FontWeight="Bold"/>
+                                   FontWeight="Medium"/>
                     </StackPanel>
 
                     <Button x:Name="HeaderHotkeyButton"
@@ -844,6 +849,7 @@
 
                 <TabControl Grid.Row="2"
                             Grid.RowSpan="2"
+                            SelectionChanged="SettingsTabs_SelectionChanged"
                             Style="{StaticResource Settings.Tabs}">
                     <TabItem Header="常规">
                         <ScrollViewer VerticalScrollBarVisibility="Auto">
@@ -973,7 +979,7 @@
                                                     Click="TestConnection_Click">
                                                 <Grid MinWidth="86">
                                                     <StackPanel x:Name="TestButtonIdleContent" Orientation="Horizontal" HorizontalAlignment="Center">
-                                                        <Viewbox Width="12" Height="12" Margin="0,0,6,0">
+                                                        <Viewbox Width="12" Height="12" Margin="0,0,10,0">
                                                             <Path Stroke="{DynamicResource Settings.TextMutedBrush}"
                                                                   StrokeThickness="1.5"
                                                                   StrokeStartLineCap="Round"
@@ -1116,7 +1122,7 @@
                                             <Border Grid.Column="1"
                                                     Height="34"
                                                     CornerRadius="17"
-                                                    Background="#14000000"
+                                                    Background="{DynamicResource Settings.SegmentTrackBrush}"
                                                     BorderBrush="{DynamicResource Settings.KeycapBorderBrush}"
                                                     BorderThickness="1"
                                                     ClipToBounds="True">
@@ -1130,7 +1136,9 @@
                                                             Grid.Column="0"
                                                             Margin="3"
                                                             CornerRadius="14"
-                                                            Background="#26FFFFFF"
+                                                            Background="{DynamicResource Settings.SegmentIndicatorBrush}"
+                                                            BorderBrush="{DynamicResource Settings.SegmentIndicatorBorderBrush}"
+                                                            BorderThickness="1"
                                                             RenderTransformOrigin="0,0">
                                                         <Border.RenderTransform>
                                                             <TranslateTransform x:Name="ThemeSegmentTransform"/>
@@ -1274,7 +1282,7 @@
                                                 Padding="12"
                                                 Margin="0,14,0,0">
                                             <DockPanel>
-                                                <Viewbox DockPanel.Dock="Left" Width="14" Height="14" Margin="0,1,9,0">
+                                                <Viewbox DockPanel.Dock="Left" Width="14" Height="14" Margin="0,1,12,0">
                                                     <Path Stroke="{DynamicResource Settings.TextMutedBrush}"
                                                           StrokeThickness="1.5"
                                                           StrokeStartLineCap="Round"
@@ -1303,7 +1311,7 @@
                                                         Style="{StaticResource Settings.GhostIconButton}"
                                                         Click="ClearHistory_Click">
                                                     <StackPanel Orientation="Horizontal">
-                                                        <Viewbox Width="12" Height="12" Margin="0,0,6,0">
+                                                        <Viewbox Width="12" Height="12" Margin="0,0,10,0">
                                                             <Path Stroke="{DynamicResource Settings.TextMutedBrush}"
                                                                   StrokeThickness="1.4"
                                                                   StrokeStartLineCap="Round"
@@ -1311,14 +1319,14 @@
                                                                   StrokeLineJoin="Round"
                                                                   Data="M2,4 L12,4 M5,4 L5,2 L9,2 L9,4 M4,4 L4.6,13 L9.4,13 L10,4 M6,6 L6.2,11 M8,6 L7.8,11"/>
                                                         </Viewbox>
-                                                        <TextBlock Text="清空历史"/>
+                                                        <TextBlock Text="清空记录"/>
                                                     </StackPanel>
                                                 </Button>
                                                 <Button Style="{StaticResource Settings.GhostIconButton}"
                                                         Margin="8,0,0,0"
                                                         Click="RefreshDiagnostics_Click">
                                                     <StackPanel Orientation="Horizontal">
-                                                        <Viewbox Width="12" Height="12" Margin="0,0,6,0">
+                                                        <Viewbox Width="12" Height="12" Margin="0,0,10,0">
                                                             <Path Stroke="{DynamicResource Settings.TextMutedBrush}"
                                                                   StrokeThickness="1.5"
                                                                   StrokeStartLineCap="Round"
@@ -1362,7 +1370,7 @@
                                                                        Text="{Binding Decision}"
                                                                        Foreground="{DynamicResource Settings.TextMutedBrush}"
                                                                        FontSize="12"
-                                                                       FontWeight="SemiBold"
+                                                                       FontWeight="Medium"
                                                                        VerticalAlignment="Center">
                                                                 <TextBlock.Style>
                                                                     <Style TargetType="{x:Type TextBlock}">
@@ -1382,7 +1390,7 @@
                                                                        Text="{Binding ProcessName, TargetNullValue=未知应用}"
                                                                        Foreground="{DynamicResource Settings.TextPrimaryBrush}"
                                                                        FontSize="12"
-                                                                       FontWeight="SemiBold"
+                                                                       FontWeight="Medium"
                                                                        VerticalAlignment="Center"/>
                                                             <TextBlock Grid.Column="3"
                                                                        Text="{Binding Reason}"
@@ -1433,7 +1441,7 @@
                             <StackPanel Orientation="Horizontal">
                                 <Path Width="13"
                                       Height="10"
-                                      Margin="0,0,7,0"
+                                      Margin="0,0,10,0"
                                       Stroke="#FFFFFFFF"
                                       StrokeThickness="1.8"
                                       StrokeStartLineCap="Round"

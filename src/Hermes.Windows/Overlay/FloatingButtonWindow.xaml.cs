@@ -45,7 +45,6 @@ public partial class FloatingButtonWindow : Window
     private void TranslateButton_Click(object sender, RoutedEventArgs e)
     {
         _dismissTimer.Stop();
-        IconGrid.Opacity = 0.55;
         TranslateButton.IsEnabled = false;
         var candidate = Candidate;
         Close();

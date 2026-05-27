@@ -7,7 +7,7 @@
 
     <Style x:Key="Text.SectionTitle" TargetType="{x:Type TextBlock}">
         <Setter Property="FontSize" Value="{StaticResource FontSize.Title}"/>
-        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="FontWeight" Value="Medium"/>
         <Setter Property="Foreground" Value="{DynamicResource Brush.TextPrimary}"/>
     </Style>
 

@@ -87,7 +87,7 @@
                             VerticalAlignment="Center">
                     <TextBlock Text="Hermes"
                                FontSize="14"
-                               FontWeight="SemiBold"
+                               FontWeight="Medium"
                                Foreground="{DynamicResource Brush.TextPrimary}"/>
                     <TextBlock x:Name="StateText"
                                Margin="0,2,0,0"

@@ -63,6 +63,16 @@ public sealed class ForegroundWindowService
         }
     }
 
+    public Task<bool> IsFocusedElementSensitiveAsync(CancellationToken cancellationToken = default)
+    {
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return Task.FromResult(false);
+        }
+
+        return Task.Run(IsFocusedElementSensitive);
+    }
+
     private static string Normalize(string value)
     {
         return value.Trim().EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
