@@ -12,6 +12,9 @@ namespace Hermes.Windows.Translation;
 
 public sealed class OpenAiTranslationService : ITranslationService
 {
+    public const string DefaultBaseUrl = "https://api.openai.com/v1";
+    public const string DefaultModel = "gpt-4.1-mini";
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
@@ -62,10 +65,12 @@ public sealed class OpenAiTranslationService : ITranslationService
         try
         {
             var stopwatch = Stopwatch.StartNew();
-            using var httpRequest = new HttpRequestMessage(HttpMethod.Post, BuildResponsesUri(settings.Api.BaseUrl));
+            var baseUrl = string.IsNullOrWhiteSpace(settings.Api.OpenAi.BaseUrl) ? DefaultBaseUrl : settings.Api.OpenAi.BaseUrl;
+            var model = string.IsNullOrWhiteSpace(settings.Api.OpenAi.Model) ? DefaultModel : settings.Api.OpenAi.Model;
+            using var httpRequest = new HttpRequestMessage(HttpMethod.Post, BuildResponsesUri(baseUrl));
             httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
             httpRequest.Content = new StringContent(
-                JsonSerializer.Serialize(CreatePayload(settings.Api.Model, request), JsonOptions),
+                JsonSerializer.Serialize(CreatePayload(model, request), JsonOptions),
                 Encoding.UTF8,
                 "application/json");
 
@@ -131,10 +136,12 @@ public sealed class OpenAiTranslationService : ITranslationService
         try
         {
             var stopwatch = Stopwatch.StartNew();
-            using var httpRequest = new HttpRequestMessage(HttpMethod.Post, BuildResponsesUri(settings.Api.BaseUrl));
+            var baseUrl = string.IsNullOrWhiteSpace(settings.Api.OpenAi.BaseUrl) ? DefaultBaseUrl : settings.Api.OpenAi.BaseUrl;
+            var model = string.IsNullOrWhiteSpace(settings.Api.OpenAi.Model) ? DefaultModel : settings.Api.OpenAi.Model;
+            using var httpRequest = new HttpRequestMessage(HttpMethod.Post, BuildResponsesUri(baseUrl));
             httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
             httpRequest.Content = new StringContent(
-                JsonSerializer.Serialize(CreatePayload(settings.Api.Model, request, stream: true), JsonOptions),
+                JsonSerializer.Serialize(CreatePayload(model, request, stream: true), JsonOptions),
                 Encoding.UTF8,
                 "application/json");
 
@@ -232,12 +239,8 @@ public sealed class OpenAiTranslationService : ITranslationService
         return new
         {
             model,
-            instructions = TranslationPromptBuilder.BuildInstructions(
-                request.Style,
-                request.TargetLanguage,
-                request.PreserveFormatting,
-                request.SystemPrompt),
-            input = TranslationPromptBuilder.BuildInput(request.SourceText),
+            instructions = TranslationPromptBuilder.BuildInstructions(request),
+            input = TranslationPromptBuilder.BuildInput(request.SourceText, request.Mode),
             stream
         };
     }
@@ -356,7 +359,7 @@ public sealed class OpenAiTranslationService : ITranslationService
     internal static Uri BuildResponsesUri(string baseUrl)
     {
         var trimmed = string.IsNullOrWhiteSpace(baseUrl)
-            ? "https://api.openai.com/v1"
+            ? DefaultBaseUrl
             : baseUrl.Trim().TrimEnd('/');
 
         if (trimmed.EndsWith("/responses", StringComparison.OrdinalIgnoreCase))

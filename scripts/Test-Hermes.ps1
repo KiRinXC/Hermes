@@ -9,9 +9,8 @@ if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
 
-$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$dotnetExe = Join-Path "D:\Code\Env\dotnet" "dotnet.exe"
-$testDll = Join-Path $repoRoot "artifacts\dotnet-verify\bin\Hermes.Tests\debug\Hermes.Tests.dll"
+$dotnetExe = $Global:HermesDotnetExe
+$testDll = Join-Path $Global:HermesBuildOutputRoot "Debug\net10.0-windows\Hermes.Tests.dll"
 
 & $dotnetExe $testDll
 exit $LASTEXITCODE

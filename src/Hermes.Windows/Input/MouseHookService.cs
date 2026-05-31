@@ -1,6 +1,7 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Hermes.Windows.Infrastructure;
+using Hermes.Windows.Translation;
 
 namespace Hermes.Windows.Input;
 
@@ -15,6 +16,8 @@ public sealed class MouseHookService : IDisposable
     private bool _hasMoved;
     private bool _ctrlDownAtStart;
     private bool _ctrlHeldDuringDrag;
+    private bool _hasActiveMode;
+    private TranslationMode _gestureMode = TranslationMode.Translate;
 
     public MouseHookService(AppLogger logger)
     {
@@ -81,7 +84,10 @@ public sealed class MouseHookService : IDisposable
         switch (message)
         {
             case NativeMethods.WmLButtonDown:
-                _ctrlDownAtStart = KeyboardModifierState.IsCtrlDown();
+                var ctrlDown = KeyboardModifierState.IsCtrlDown();
+                var altDown = KeyboardModifierState.IsAltDown();
+                _hasActiveMode = TryResolveGestureMode(ctrlDown, altDown, out _gestureMode);
+                _ctrlDownAtStart = _hasActiveMode;
                 _isLeftDown = ShouldTrackSelectionGesture(_ctrlDownAtStart);
                 _hasMoved = false;
                 _ctrlHeldDuringDrag = _ctrlDownAtStart;
@@ -92,7 +98,7 @@ public sealed class MouseHookService : IDisposable
             case NativeMethods.WmMouseMove:
                 if (_isLeftDown)
                 {
-                    _ctrlHeldDuringDrag &= KeyboardModifierState.IsCtrlDown();
+                    _ctrlHeldDuringDrag &= _hasActiveMode && IsGestureModifierHeld(_gestureMode);
                 }
 
                 if (_isLeftDown && Distance(_downPoint, point) > 8)
@@ -103,8 +109,8 @@ public sealed class MouseHookService : IDisposable
                 break;
             case NativeMethods.WmLButtonUp:
                 var completedSelectionGesture = false;
-                var ctrlDownAtRelease = KeyboardModifierState.IsCtrlDown();
-                if (_isLeftDown && _hasMoved && ShouldEmitSelectionGesture(_ctrlDownAtStart, _ctrlHeldDuringDrag, ctrlDownAtRelease))
+                var modifierDownAtRelease = _hasActiveMode && IsGestureModifierHeld(_gestureMode);
+                if (_isLeftDown && _hasMoved && ShouldEmitSelectionGesture(_ctrlDownAtStart, _ctrlHeldDuringDrag, modifierDownAtRelease))
                 {
                     completedSelectionGesture = true;
                     SelectionGestureCompleted?.Invoke(
@@ -116,14 +122,16 @@ public sealed class MouseHookService : IDisposable
                             point.Y,
                             _downAt,
                             DateTimeOffset.Now,
+                            _gestureMode,
                             _ctrlDownAtStart,
                             _ctrlHeldDuringDrag,
-                            ctrlDownAtRelease));
+                            modifierDownAtRelease));
                 }
 
                 _isLeftDown = false;
                 _ctrlDownAtStart = false;
                 _ctrlHeldDuringDrag = false;
+                _hasActiveMode = false;
                 if (!completedSelectionGesture)
                 {
                     UserActivity?.Invoke(this, new MouseActivityEventArgs(point.X, point.Y, message));
@@ -135,6 +143,31 @@ public sealed class MouseHookService : IDisposable
                 UserActivity?.Invoke(this, new MouseActivityEventArgs(point.X, point.Y, message));
                 break;
         }
+    }
+
+    private static bool TryResolveGestureMode(bool ctrlDown, bool altDown, out TranslationMode mode)
+    {
+        if (ctrlDown)
+        {
+            mode = TranslationMode.Translate;
+            return true;
+        }
+
+        if (altDown)
+        {
+            mode = TranslationMode.Explain;
+            return true;
+        }
+
+        mode = TranslationMode.Translate;
+        return false;
+    }
+
+    private static bool IsGestureModifierHeld(TranslationMode mode)
+    {
+        return mode == TranslationMode.Explain
+            ? KeyboardModifierState.IsAltDown()
+            : KeyboardModifierState.IsCtrlDown();
     }
 
     private static double Distance(NativeMethods.POINT a, NativeMethods.POINT b)
@@ -180,6 +213,7 @@ public sealed class MousePointEventArgs : EventArgs
         int y,
         DateTimeOffset startedAt,
         DateTimeOffset releasedAt,
+        TranslationMode mode,
         bool ctrlDownAtStart,
         bool ctrlHeldDuringDrag,
         bool ctrlDownAtRelease)
@@ -190,6 +224,7 @@ public sealed class MousePointEventArgs : EventArgs
         Y = y;
         StartedAt = startedAt;
         ReleasedAt = releasedAt;
+        Mode = mode;
         CtrlDownAtStart = ctrlDownAtStart;
         CtrlHeldDuringDrag = ctrlHeldDuringDrag;
         CtrlDownAtRelease = ctrlDownAtRelease;
@@ -206,6 +241,8 @@ public sealed class MousePointEventArgs : EventArgs
     public DateTimeOffset StartedAt { get; }
 
     public DateTimeOffset ReleasedAt { get; }
+
+    public TranslationMode Mode { get; }
 
     public bool CtrlDownAtStart { get; }
 

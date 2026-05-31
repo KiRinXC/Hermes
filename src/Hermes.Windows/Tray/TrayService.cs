@@ -45,6 +45,7 @@ public sealed class TrayService : IDisposable
         {
             _notificationWindow?.Close();
             _notificationWindow = new TrayNotificationWindow(title, message);
+            _notificationWindow.SettingsRequested += (_, _) => SettingsRequested?.Invoke(this, EventArgs.Empty);
             _notificationWindow.Closed += (_, _) => _notificationWindow = null;
             _notificationWindow.Show();
         });

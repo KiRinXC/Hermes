@@ -1,4 +1,6 @@
-﻿namespace Hermes.Windows.Selection;
+using Hermes.Windows.Translation;
+
+namespace Hermes.Windows.Selection;
 
 public sealed record SelectionCandidate(
     Guid Id,
@@ -8,6 +10,7 @@ public sealed record SelectionCandidate(
     double DragDistance,
     TimeSpan DragDuration,
     ForegroundWindowInfo? ForegroundWindow,
+    TranslationMode Mode,
     string? PreReadText,
     ScreenBounds? Bounds,
     double Confidence)
@@ -34,6 +37,7 @@ public sealed record SelectionCandidateInput(
     DateTimeOffset StartedAt,
     DateTimeOffset ReleasedAt,
     ForegroundWindowInfo? ForegroundWindow,
+    TranslationMode Mode,
     bool CtrlDownAtStart,
     bool CtrlHeldDuringDrag,
     bool CtrlDownAtRelease)

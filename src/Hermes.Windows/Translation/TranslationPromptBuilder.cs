@@ -13,6 +13,8 @@ public static class TranslationPromptBuilder
 5. 不要解释，不要总结，不要输出多余前后缀，只输出译文。
 """;
 
+    public const string DefaultExplanationPreference = "优先按计算机体系结构与软件工程语境解释术语。";
+
     public static string BuildInstructions(
         string style,
         string targetLanguage,
@@ -36,8 +38,49 @@ public static class TranslationPromptBuilder
         return $"英译{targetLanguage}。{styleInstruction} 保留代码、命令、URL、变量名、品牌名和专有名词；技术术语准确。{formatInstruction} 只输出译文，不解释。";
     }
 
-    public static string BuildInput(string sourceText)
+    public static string BuildInstructions(TranslationRequest request)
     {
+        if (request.Mode == TranslationMode.Explain)
+        {
+            return BuildExplanationInstructions(request.ExplanationPreference);
+        }
+
+        return BuildInstructions(
+            request.Style,
+            request.TargetLanguage,
+            request.PreserveFormatting,
+            request.SystemPrompt);
+    }
+
+    public static string BuildInput(string sourceText, TranslationMode mode)
+    {
+        if (mode == TranslationMode.Explain)
+        {
+            return $"术语：{sourceText}";
+        }
+
         return $"Translate the following text into Simplified Chinese:{Environment.NewLine}{Environment.NewLine}{sourceText}";
+    }
+
+    private static string BuildExplanationInstructions(string? explanationPreference)
+    {
+        var preference = string.IsNullOrWhiteSpace(explanationPreference)
+            ? DefaultExplanationPreference
+            : explanationPreference.Trim();
+
+        return
+            "你是术语解释助手。请用简体中文解释用户给出的术语、缩写或短语。"
+            + Environment.NewLine
+            + "要求："
+            + Environment.NewLine
+            + "1. 优先按计算机与软件技术语境理解。"
+            + Environment.NewLine
+            + "2. 先给一句最简定义，再给 2-4 条补充说明。"
+            + Environment.NewLine
+            + "3. 如果存在多个常见含义，按“最可能 -> 次常见”列出。"
+            + Environment.NewLine
+            + "4. 保留术语原文，不要编造。"
+            + Environment.NewLine
+            + $"5. 个性化偏好：{preference}";
     }
 }

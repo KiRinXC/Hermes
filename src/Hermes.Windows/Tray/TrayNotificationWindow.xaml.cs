@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Input;
 using System.Windows.Threading;
 using Hermes.Windows.Infrastructure;
 using Forms = System.Windows.Forms;
@@ -21,7 +22,10 @@ public partial class TrayNotificationWindow : Window
 
         _dismissTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3.6) };
         _dismissTimer.Tick += (_, _) => FadeOutAndClose();
+        AddHandler(MouseLeftButtonUpEvent, new MouseButtonEventHandler(Notification_MouseLeftButtonUp), true);
     }
+
+    public event EventHandler? SettingsRequested;
 
     protected override void OnSourceInitialized(EventArgs e)
     {
@@ -41,6 +45,24 @@ public partial class TrayNotificationWindow : Window
 
     private void CloseButton_Click(object sender, RoutedEventArgs e)
     {
+        e.Handled = true;
+        FadeOutAndClose();
+    }
+
+    private void Notification_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (IsCloseButtonClick(e.OriginalSource))
+        {
+            return;
+        }
+
+        OpenSettingsFromNotification();
+        e.Handled = true;
+    }
+
+    private void OpenSettingsFromNotification()
+    {
+        SettingsRequested?.Invoke(this, EventArgs.Empty);
         FadeOutAndClose();
     }
 
@@ -91,5 +113,25 @@ public partial class TrayNotificationWindow : Window
         };
         transform.BeginAnimation(ScaleTransform.ScaleXProperty, animation);
         transform.BeginAnimation(ScaleTransform.ScaleYProperty, animation);
+    }
+
+    private static bool IsCloseButtonClick(object source)
+    {
+        if (source is not DependencyObject current)
+        {
+            return false;
+        }
+
+        while (current is not null)
+        {
+            if (current is System.Windows.Controls.Button)
+            {
+                return true;
+            }
+
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return false;
     }
 }

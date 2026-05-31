@@ -10,14 +10,17 @@ Hermes 是一个 Windows 全局 AI 划词翻译助手。选中英文内容后，
 
 - 经常在浏览器、PDF、VS Code、Notion、Slack、Word 等软件里阅读英文内容的人。
 - 希望不复制、不切窗口、不打开网页翻译器，就能快速理解一段英文的人。
-- 想用自己的 OpenAI 或 OpenAI-compatible API Key 做本地桌面翻译的人。
+- 希望默认即用腾讯交互翻译（Transmart），并按需切换到 OpenAI 的人。
 
 ## 功能亮点
 
 - 全局快捷键翻译，默认 `Ctrl+Alt+E`。
-- 按住 `Ctrl` 划词后显示悬浮翻译按钮，普通划词不会触发。
+- 按住 `Ctrl` 划词后显示悬浮翻译按钮并执行翻译，普通划词不会触发。
+- 按住 `Alt` 划词后使用同一悬浮按钮触发术语解释（可配置“解释个性化偏好”）。
 - 翻译结果以悬浮卡片显示，支持复制、重新翻译、固定、关闭和拖动。
-- 使用 OpenAI Responses API，支持流式输出，译文会边生成边显示。
+- 翻译卡片和设置窗口支持从边缘/四角调整大小并自动记忆；悬浮按钮图标大小和浮窗字号都可在外观页通过五点横向控件选择，图标预览会随浅色/深色主题切换且保持透明背景。
+- 默认使用腾讯 Transmart 翻译；可切换 OpenAI / OpenAI-compatible。
+- OpenAI 模式支持 Responses API 流式输出，译文会边生成边显示。
 - 支持 OpenAI-compatible Base URL 和自定义模型名。
 - API Key 使用 Windows DPAPI 加密保存在本机。
 - 支持浅色、深色和跟随系统主题。
@@ -49,21 +52,24 @@ artifacts\publish\Hermes.Windows\manual-test\win-x64-self-contained\
 
 1. 启动 `Hermes.Windows.exe`。
 2. 在系统托盘中打开 Hermes 设置。
-3. 填入 API Key、Base URL 和 Model。
+3. 默认 Provider 为 Transmart，可直接使用；如需 OpenAI 再填写 API Key / Base URL / Model。
 4. 选中一段英文文本，按 `Ctrl+Alt+E` 翻译。
 5. 或按住 `Ctrl` 划选英文文本，点击出现的悬浮翻译图标。
+6. 按住 `Alt` 划选术语，点击悬浮按钮查看解释。
 
 默认 Base URL：
 
 ```text
-https://api.openai.com/v1
+https://transmart.qq.com/api
 ```
 
 默认模型：
 
 ```text
-gpt-4.1-mini
+normal
 ```
+
+说明：术语解释（`Alt` 划词）固定走 OpenAI 通道，请在“AI解释”区域配置 OpenAI API。
 
 ## 使用边界
 
@@ -88,7 +94,7 @@ Windows 上不同应用暴露选区的方式并不一致，所以 Hermes 采用�
 项目目标框架是 `net10.0-windows`。当前开发环境使用：
 
 ```powershell
-D:\Code\Env\dotnet\dotnet.exe
+C:\Code\Env\dotnet\dotnet.exe
 ```
 
 常用命令：
@@ -132,3 +138,14 @@ artifacts\release\v0.1.0\
 - `Design.md`：项目结构、核心流程、模块职责、打包策略和变更记录。
 - `docs/release-notes/`：GitHub Release 文案草稿。
 - `docs/prompts/`：README 头图等视觉素材提示词。
+
+## Provider Notes (2026-05-29)
+
+- Translation settings now use a dual-channel layout: `AI翻译` configures Tencent Transmart, and `AI解释` keeps OpenAI configuration with a `翻译走 OpenAI` toggle.
+- Explanation mode always uses OpenAI.
+- Translation mode uses OpenAI only when `翻译走 OpenAI` is enabled; otherwise it uses Transmart.
+- Legacy single-provider settings are migrated automatically on load.
+- Legacy provider migration is only applied when `UseOpenAiForTranslation` is missing from saved settings (old schema), so manual toggle changes are not overwritten.
+- Popup loading text now exposes the active channel at runtime and keeps that channel visible during streaming or long-running states:
+  - `正在翻译 (Tencent)...` for Transmart translation.
+  - `正在翻译 (<OpenAI model>)...` for OpenAI translation.

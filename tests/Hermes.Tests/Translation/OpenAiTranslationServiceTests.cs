@@ -13,6 +13,7 @@ public static class OpenAiTranslationServiceTests
         suite.Add("extracts output array text", ExtractsOutputArrayText);
         suite.Add("uses custom prompt instructions", UsesCustomPromptInstructions);
         suite.Add("builds streaming responses payload", BuildsStreamingResponsesPayload);
+        suite.Add("builds explanation instructions from preference", BuildsExplanationInstructionsFromPreference);
         suite.Add("parses streaming output text delta", ParsesStreamingOutputTextDelta);
         suite.Add("reconciles streaming done text", ReconcilesStreamingDoneText);
         suite.Add("maps streaming provider error event", MapsStreamingProviderErrorEvent);
@@ -60,6 +61,24 @@ public static class OpenAiTranslationServiceTests
 
         TestAssert.Contains("\"model\":\"gpt-test\"", json);
         TestAssert.Contains("\"stream\":true", json);
+    }
+
+    private static void BuildsExplanationInstructionsFromPreference()
+    {
+        var request = new TranslationRequest(
+            "CSR",
+            "natural",
+            "Simplified Chinese",
+            PreserveFormatting: true,
+            SystemPrompt: null,
+            Mode: TranslationMode.Explain,
+            ExplanationPreference: "偏向计算机体系结构");
+        var instructions = TranslationPromptBuilder.BuildInstructions(request);
+        var input = TranslationPromptBuilder.BuildInput("CSR", TranslationMode.Explain);
+
+        TestAssert.Contains("术语解释助手", instructions);
+        TestAssert.Contains("偏向计算机体系结构", instructions);
+        TestAssert.Contains("术语：CSR", input);
     }
 
     private static void ParsesStreamingOutputTextDelta()

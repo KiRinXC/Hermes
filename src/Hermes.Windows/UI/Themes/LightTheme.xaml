@@ -23,6 +23,8 @@
     <Color x:Key="Color.PopupSurface">#EBFFFFFF</Color>
     <Color x:Key="Color.PopupBorderTop">#E5E5EA</Color>
     <Color x:Key="Color.PopupBorderBottom">#D1D1D6</Color>
+    <Color x:Key="Color.ScrollThumb">#52000000</Color>
+    <Color x:Key="Color.ScrollThumbHover">#7A000000</Color>
     <Color x:Key="Color.BrandStart">#007AFF</Color>
     <Color x:Key="Color.BrandEnd">#5856D6</Color>
 
@@ -47,6 +49,8 @@
     <SolidColorBrush x:Key="Brush.SourcePanel" Color="{StaticResource Color.SourcePanel}"/>
     <SolidColorBrush x:Key="Brush.TrayMenuSurface" Color="{StaticResource Color.TrayMenuSurface}"/>
     <SolidColorBrush x:Key="Brush.PopupSurface" Color="{StaticResource Color.PopupSurface}"/>
+    <SolidColorBrush x:Key="Brush.ScrollThumb" Color="{StaticResource Color.ScrollThumb}"/>
+    <SolidColorBrush x:Key="Brush.ScrollThumbHover" Color="{StaticResource Color.ScrollThumbHover}"/>
     <LinearGradientBrush x:Key="Brush.PopupBorder" StartPoint="0,0" EndPoint="0,1">
         <GradientStop Color="{StaticResource Color.PopupBorderTop}" Offset="0"/>
         <GradientStop Color="{StaticResource Color.PopupBorderBottom}" Offset="1"/>

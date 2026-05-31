@@ -56,7 +56,7 @@ Hermes
 - 启用单实例守卫，重复启动时激活已有实例。
 - 加载设置并应用主题。
 - 初始化 DPAPI 密钥存储、日志、历史、翻译服务、选区服务、悬浮层服务。
-- 注册托盘菜单、全局快捷键、键盘 hook、鼠标 hook。
+- 注册托盘菜单，并在启动通知显示后延迟注册全局快捷键、键盘 hook 和鼠标 hook，降低应用刚启动时 UI 线程忙碌造成的鼠标卡顿。
 - 根据暂停状态和设置控制触发器启动或停止。
 
 当前服务之间以构造函数直接组装为主，没有引入依赖注入容器。这个选择符合 MVP 体量，后续如果服务数量继续增长，可以再评估是否引入轻量 DI。
@@ -78,7 +78,7 @@ SelectionOrchestrator
   ├─ 先读 UI Automation 选区
   └─ 失败后使用受控剪贴板兜底
   ↓
-OpenAiTranslationService 以流式 Responses API 请求翻译
+ProviderRoutingTranslationService 按设置路由到 Transmart 或 OpenAI
   ↓
 OverlayManager 显示翻译卡片并逐段追加译文
 ```
@@ -88,22 +88,24 @@ OverlayManager 显示翻译卡片并逐段追加译文
 ### 鼠标划词悬浮按钮
 
 ```text
-用户按住 Ctrl 拖选文本
+用户按住 Ctrl 或 Alt 拖选文本
   ↓
-MouseHookService 捕捉 Ctrl 选择手势完成
+MouseHookService 捕捉选择手势完成
   ↓
-SelectionCandidateService 尝试读取候选选区
+SelectionCandidateService 评估手势并尝试预读候选选区
   ↓
 OverlayManager 显示悬浮按钮
   ↓
 用户点击按钮
   ↓
-TranslationCoordinator 翻译候选文本
+TranslationCoordinator
+  ├─ Ctrl 手势: 翻译候选文本
+  └─ Alt 手势: 解释候选术语
   ↓
 TranslationPopupWindow 显示结果
 ```
 
-被动鼠标路径不执行剪贴板复制，且普通拖选不会进入候选判断或触发诊断记录；只有从按下到释放都保持 Ctrl 的拖选才会继续评估悬浮按钮。这样既减少鼠标 hook 后续工作量，也避免用户未明确触发时污染剪贴板或上传误判文本。
+被动鼠标路径不执行剪贴板复制，且普通拖选不会进入候选判断或触发诊断记录；只有从按下到释放都保持 Ctrl 或 Alt 的拖选才会继续评估悬浮按钮。鼠标释放后只做短暂选区稳定等待，随后候选评估阶段会对敏感控件 UI Automation 检查使用短时间盒，并用更短时间盒预读取选区；如果快速读到文本，则校验并缓存到候选对象，点击按钮后直接使用预读文本；如果 UI Automation 没有暴露选区或预读超时，则仍按手势置信度显示按钮，等用户点击后再走显式触发路径（UI Automation + 受控剪贴板兜底）读取文本。若 UI Automation 明确读到文本但文本不满足校验，则不显示按钮。这样既避免被动路径污染剪贴板，也防止 Zotero、PDF、Electron 或自绘控件等 UI Automation 覆盖较弱的应用拖慢悬浮按钮显示。
 
 ### 剪贴板翻译
 
@@ -127,17 +129,19 @@ ClipboardSelectionProvider 读取当前剪贴板文本
 
 `Shell/SettingsWindow` 是设置入口，负责 API、翻译、触发、UI、隐私、开机启动等配置的展示和保存。设置窗口由托盘菜单或翻译卡片中的设置动作打开。
 
-当前设置窗口采用固定 `800 × 600` 的无边框 WPF 壳，窗口内部按 Header、Body、Footer 三段式组织。Header 包含紧凑品牌区、可点击录制的快捷键键帽和五个文字页签；页签与应用图标保持更舒展的垂直间距，外层壳体不再使用会被透明窗口裁切成黑框的外边距阴影。Body 使用圆角分组卡片承载常规、翻译、外观、隐私和高级诊断；Footer 固定放置保存和状态反馈。设置窗口文字层级以 Regular/Medium 为主，不使用 Bold/SemiBold 作为常规 UI 字重。窗口打开时执行淡入与缩放动效；为保证透明无边框窗口四角干净，设置窗不再启用矩形 DWM/Mica 背景，而由本地壳体背景和运行时圆角裁剪承载视觉外观。
+当前设置窗口默认 `800 × 600`，采用无边框 WPF 壳，窗口内部按 Header、Body、Footer 三段式组织。Header 包含紧凑品牌区、可点击录制的快捷键键帽和五个文字页签；页签与应用图标保持更舒展的垂直间距，外层壳体不再使用会被透明窗口裁切成黑框的外边距阴影。Body 使用圆角分组卡片承载常规、翻译、外观、隐私和高级诊断；Footer 固定放置保存和状态反馈。设置窗口文字层级以 Regular/Medium 为主，不使用 Bold/SemiBold 作为常规 UI 字重。窗口打开时执行淡入与缩放动效；为保证透明无边框窗口四角干净，设置窗不再启用矩形 DWM/Mica 背景，而由本地壳体背景和运行时圆角裁剪承载视觉外观。虽然窗口视觉上保持无边框，但边缘和四角通过 `WM_NCHITTEST` 恢复原生拖拽缩放手感，用户调整后的宽高会自动写入设置并作为下次默认尺寸。
 
-设置页控件已从传统表单升级为更轻量的交互形态：布尔项使用设置页本地 ToggleSwitch，外观规格使用 Slider，主题使用分段选择器，API Key 支持显示/隐藏，右上角键帽按钮支持录制组合键。主题分段选择器的轨道、选中胶囊和描边都使用本地动态主题资源，浅色模式下以灰色轨道、白色选中胶囊和细描边明确当前选项。鼠标点击页签切换设置分区后，会在内容加载完成时清掉 WPF 自动落到第一个开关上的焦点，避免隐私页“保存翻译历史”等 ToggleSwitch 出现误导性的蓝色焦点框；键盘导航路径仍保留可见焦点。键帽按钮整体背景和代码生成的单个键帽都使用动态主题资源，浅色模式下会立即切换为浅灰外壳和浅色键帽；进入录制后再次点击按钮、点击窗口其它区域或按 Esc 会取消录制并清掉蓝色焦点框，录制过程不再写入 Footer 状态提示。测试连接作为 API 凭据上下文动作放在 API Key 行右侧，清空历史作为高级诊断上下文动作放在高级页内。翻译页的模型字段保持为手动输入框，避免模型选择控件在紧凑布局中截断；目标语言固定为中文，不再在设置页展示。翻译页还提供可编辑的系统 Prompt，空白时回退到默认英文到简体中文翻译提示词。设置窗口内置本地 TextBox、PasswordBox、ComboBox、ComboBoxItem、FooterButton、Tab、ToggleSwitch、Slider 和滚动条样式，避免设置页回落到原生控件质感。`SettingsWindowOptions` 用于分离设置项显示文案和持久化值，避免中文高级文案写入配置文件。`SettingsWindowThemePalettes` 负责设置窗口自身的浅色/深色调色板，外观页切换主题时会替换本地 brush 资源；设置窗口样式使用 DynamicResource 引用这些 brush，因此浅色/深色/跟随系统会立即作用于设置窗口自身。浅色主题下开关关闭轨道、滑块未选轨道和快捷键键帽使用可读灰阶，避免黑色控件在浅色面板中过重或不可见。
+设置页控件已从传统表单升级为更轻量的交互形态：布尔项使用设置页本地 ToggleSwitch，外观规格使用 Slider，主题使用分段选择器，API Key 支持显示/隐藏，右上角键帽按钮支持录制组合键。主题分段选择器的轨道、选中胶囊和描边都使用本地动态主题资源，浅色模式下以灰色轨道、白色选中胶囊和细描边明确当前选项。鼠标点击页签切换设置分区后，会在内容加载完成时清掉 WPF 自动落到第一个开关上的焦点，避免隐私页“保存翻译历史”等 ToggleSwitch 出现误导性的蓝色焦点框；键盘导航路径仍保留可见焦点。键帽按钮整体背景和代码生成的单个键帽都使用动态主题资源，浅色模式下会立即切换为浅灰外壳和浅色键帽；进入录制后再次点击按钮、点击窗口其它区域或按 Esc 会取消录制并清掉蓝色焦点框，录制过程不再写入 Footer 状态提示。测试连接作为 API 凭据上下文动作放在 API Key 行右侧，清空历史作为高级诊断上下文动作放在高级页内。翻译页的模型字段保持为手动输入框，避免模型选择控件在紧凑布局中截断；目标语言固定为中文，不再在设置页展示。翻译页还提供可编辑的系统 Prompt，空白时回退到默认英文到简体中文翻译提示词。外观页提供“气球样式”下拉项、“图标大小”五点横向选择器和“浮窗字号”五点横向选择器：图标大小从左到右对应超小到超大，两端使用透明背景的真实悬浮按钮图标预览尺度，并随当前浅色/深色主题切换 light/dark 图标；浮窗字号从左到右对应五档真实字号，两端用固定画布的矢量 `A` 图标直接显示最小和最大字号，避免字体基线影响端点对齐；两个五点控件共用对齐后的轨道几何，不再显示额外档位文字。外观页不再提供翻译卡片默认宽高控件，卡片尺寸由用户直接拉伸卡片后自动记忆。设置窗口内置本地 TextBox、PasswordBox、ComboBox、ComboBoxItem、FooterButton、Tab、ToggleSwitch、Slider 和滚动条样式，避免设置页回落到原生控件质感。`SettingsWindowOptions` 用于分离设置项显示文案和持久化值，避免中文高级文案写入配置文件。`SettingsWindowThemePalettes` 负责设置窗口自身的浅色/深色调色板，外观页切换主题时会替换本地 brush 资源；设置窗口样式使用 DynamicResource 引用这些 brush，因此浅色/深色/跟随系统会立即作用于设置窗口自身。浅色主题下开关关闭轨道、滑块未选轨道、滚动条滑块和快捷键键帽使用可读灰阶，避免黑色控件在浅色面板中过重或不可见。
+
+浮窗字号当前提供 `12 / 14 / 16 / 18 / 20` 五档，默认值为 `16`；`TranslationPopupWindow` 会将设置值限制在 12 到 20 之间，并同时应用到译文正文和原文预览。
 
 ### Tray
 
-`TrayService` 维护系统托盘图标和菜单。左键单击托盘图标会直接打开设置窗口；右键菜单保留暂停/恢复、翻译剪贴板、设置和退出，不再显示历史入口。托盘是用户无需打开主窗口即可控制应用的主要入口。
+`TrayService` 维护系统托盘图标、菜单和启动通知。左键单击托盘图标会直接打开设置窗口；右键菜单保留暂停/恢复、翻译剪贴板、设置和退出，不再显示历史入口；启动时右下角通知支持点击打开设置窗口。通知点击后的设置窗会执行一次显式抬前流程：必要时恢复窗口、临时置顶、激活并聚焦，再恢复普通层级，避免被其他应用窗口盖住。托盘是用户无需打开主窗口即可控制应用的主要入口。
 
 ### Input
 
-`HotkeyService` 负责注册全局快捷键。`KeyboardHookService` 和 `MouseHookService` 负责低级输入监听，用于关闭被动 UI、捕捉 Esc、识别鼠标选择手势。Hook 内不做重计算，只转发事件给协调层。
+`HotkeyService` 负责注册全局快捷键。`KeyboardHookService` 和 `MouseHookService` 负责低级输入监听，用于关闭被动 UI、捕捉 Esc、识别鼠标选择手势。启动阶段会等通知窗口显示后再注册触发器，避免低级 hook 在 UI 线程初始化繁忙时影响鼠标流畅度。Hook 内不做重计算，只转发事件给协调层。
 
 ### Selection
 
@@ -145,7 +149,7 @@ ClipboardSelectionProvider 读取当前剪贴板文本
 
 - `UiAutomationSelectionProvider` 通过 Windows UI Automation 读取当前选区，读取工作运行在后台线程，避免点击悬浮翻译按钮时卡住 WPF UI 线程。
 - `ClipboardSelectionProvider` 在显式触发时使用受控复制或读取剪贴板文本；剪贴板操作运行在专用 STA 线程，不再通过主 Dispatcher 执行 `Ctrl+C` 和剪贴板读写。
-- `ForegroundWindowService` 判断前台窗口、排除应用和敏感控件。
+- `ForegroundWindowService` 判断前台窗口、排除应用和敏感控件；被动划词按钮路径中的敏感控件检查使用短时间盒，避免慢 UI Automation 控件拖住按钮显示。
 - `SelectionTextValidator` 根据语言、长度和设置校验文本。
 - `SelectionOrchestrator` 决定显式触发、被动鼠标和剪贴板翻译时的读取策略。
 
@@ -153,21 +157,25 @@ ClipboardSelectionProvider 读取当前剪贴板文本
 
 悬浮层模块负责按钮、翻译卡片和位置计算。
 
-- `FloatingButtonWindow` 显示按住 Ctrl 划词后的轻量翻译按钮。
-- `FloatingButtonWindow` 的浅色/深色图标基于 `src\Hermes.Windows\Resources\Icons\FloatingButtonLight.svg` 和 `FloatingButtonDark.svg` 的路径和填充色绘制，未点击和未选中状态不再对图标本体施加模糊或变淡效果。按钮外层固定为 44×44 透明圆角命中区，内部 25×25 图标不参与命中测试，用户点击热区任意位置即可触发翻译。
-- `TranslationPopupWindow` 显示加载、流式译文、长耗时、成功、错误、复制、重试、固定和关闭状态；成功完成且未固定时，鼠标点击浮窗外部会关闭卡片。
+- `FloatingButtonWindow` 显示按住 Ctrl/Alt 划词后的轻量触发按钮。
+- `FloatingButtonWindow` 的浅色/深色图标内容同步自 `src/Hermes.Windows/Resources/Icons/FloatingButtonLight.svg` 和 `FloatingButtonDark.svg`，不再额外叠加实底边框；仓库根目录不再保留同名副本图标。按钮尺寸由 `UiSettings.FloatingButtonSize` 控制，五档分别映射命中区和图标层大小：超小 32/18、小 38/22、中 44/25、大 52/30、超大 60/36，点击热区会随图标尺寸一起缩放。
+- `FloatingButtonWindow` 支持手动高对比图标样式：`DarkBorderLightFill`（黑框白底图标）和 `LightBorderDarkFill`（白框黑底图标），并通过设置页外观项持久化，避免深色网页与浅色主题叠加时按钮不可辨。
+- `TranslationPopupWindow` 显示加载、流式译文、长耗时、成功、错误、复制、重试、固定和关闭状态；加载标题会显示实际运行通道（`Tencent` 或 OpenAI 模型名），并在流式 delta 与长耗时状态中继续保留该通道文案。成功完成且未固定时，鼠标点击浮窗外部会关闭卡片。翻译卡片同样保持无边框外观，并通过 `WM_NCHITTEST` 支持边缘和四角原生缩放；用户调整后的宽高会自动保存为下一张卡片默认尺寸。卡片正文滚动条使用与设置窗口一致的细轨道/圆角滑块样式，并通过 `Brush.ScrollThumb` / `Brush.ScrollThumbHover` 随浅色、深色主题切换颜色。
+- `TranslationPopupWindow` 的正文渲染统一由 `PopupMarkdownRenderer` 处理，翻译和解释（含流式 delta）共用同一条 Markdown 渲染链路，支持标题、列表、引用、代码块、行内代码、强调和链接文本，并对未闭合标记按普通文本降级显示，避免流式阶段卡死或错乱。
 - `TranslationPopupWindow` 顶部使用应用图标作为品牌标识；用户可以从卡片背景、正文和原文区域等非交互表面拖动卡片，按钮、开关、滚动条等交互控件不会触发拖拽。
 - `OverlayPositionService` 负责多屏幕边界内的位置约束。
-- `OverlayManager` 对外提供显示、追加流式译文、完成翻译和关闭悬浮 UI 的统一入口，并区分普通被动 UI 关闭与已完成未固定浮窗的外部点击关闭。
+- `OverlayManager` 对外提供显示与关闭悬浮 UI 的统一入口，并区分普通被动 UI 关闭与已完成未固定浮窗的外部点击关闭。显示新悬浮按钮前会清理当前进程中残留的 `FloatingButtonWindow`，`TranslationCoordinator` 也会取消旧的被动划词候选评估，避免快速划词或旧异步评估完成后出现重复按钮。它会跟踪多张浮窗并把重试/关闭事件按浮窗实例回传，避免固定旧卡片影响当前请求。
 
 ### Translation
 
-翻译模块封装 OpenAI 兼容 Responses API。
+翻译模块封装多提供方翻译能力。
 
-- `TranslationPromptBuilder` 构造英文到简体中文翻译指令，并提供可配置 Prompt 的默认值。
-- `OpenAiTranslationService` 读取设置和密钥，发送 Responses API 请求。普通路径解析 `output_text` 或 `output` 内容；翻译主路径使用 `stream = true` 读取 SSE 事件，按 `response.output_text.delta` 逐段输出，并在完成时汇总最终译文。
+- `TranslationPromptBuilder` 构造翻译/解释指令，并提供默认翻译 Prompt 与解释个性化偏好。
+- `TransmartTranslationService` 调用 Tencent Transmart `.../imt` 接口，作为默认翻译提供方。
+- `OpenAiTranslationService` 读取设置和密钥，发送 Responses API 请求。普通路径解析 `output_text` 或 `output` 内容；OpenAI 路径使用 `stream = true` 读取 SSE 事件，按 `response.output_text.delta` 逐段输出，并在完成时汇总最终译文。
+- `ProviderRoutingTranslationService` 根据设置路由到 Transmart 或 OpenAI；解释模式固定走 OpenAI，翻译模式由 `UseOpenAiForTranslation` 开关决定。
 - `TranslationStreamEvent` 描述流式翻译的增量、完成和失败事件。
-- `TranslationCoordinator` 串联选区、流式翻译、历史和 UI，是翻译工作流协调层。它会在 Ctrl 条件不满足时直接跳过被动鼠标候选流程，并对流式 delta 做轻量批处理后再刷新 UI；用户关闭翻译卡片时会取消当前请求，成功完成后再保存最终译文。
+- `TranslationCoordinator` 串联选区、流式翻译、历史和 UI，是翻译工作流协调层。它会在手势条件不满足时直接跳过被动鼠标候选流程，并对流式 delta 做轻量批处理后再刷新 UI；用户关闭翻译卡片时会取消对应请求，成功完成后再保存最终译文。固定卡片共存时，每张卡片的重试与状态更新按实例隔离。
 
 错误处理覆盖缺少 API Key、鉴权失败、余额或额度不足、限流、无效请求、网络错误、超时、取消和空响应。
 
@@ -178,7 +186,7 @@ ClipboardSelectionProvider 读取当前剪贴板文本
 - `SettingsService` 读写 `%LOCALAPPDATA%\Hermes\settings.json`。
 - `DpapiSecretStorageService` 使用 Windows DPAPI 加密保存 API Key 到 `secrets.dat`。
 - `StartupRegistrationService` 管理开机启动注册。
-- `AppSettings` 定义 API、翻译、触发、UI、隐私和启动设置，其中翻译设置包含可编辑系统 Prompt。
+- `AppSettings` 定义 API、翻译、触发、UI、隐私和启动设置。默认 Provider 为 `Transmart`（`https://transmart.qq.com/api`，`normal`），翻译设置包含可编辑系统 Prompt 和“解释个性化偏好”。
 
 ### History
 
@@ -194,7 +202,7 @@ ClipboardSelectionProvider 读取当前剪贴板文本
 
 ### Tests
 
-`tests/Hermes.Tests` 是轻量控制台测试套件，覆盖设置、脱敏、选区校验、选择候选、快捷键解析、鼠标 Ctrl 触发门控、设置窗口选项文案和值映射、历史/诊断清理、OpenAI 普通/流式响应解析、悬浮按钮清晰度约束、翻译卡片拖拽/外部点击关闭入口和 UI 字重约束等逻辑。WPF 可视交互仍需要真实应用试用补充验证。
+`tests/Hermes.Tests` 是轻量控制台测试套件，覆盖设置、脱敏、选区校验、选择候选、UI Automation 预读失败/超时手势兜底、被动路径敏感控件检查时间盒、快捷键解析、鼠标 Ctrl/Alt 触发门控、启动触发器延迟注册、启动通知点击设置、设置窗口选项文案和值映射、设置/弹窗边缘缩放与尺寸持久化约束、外观页悬浮按钮五点尺寸选择器对齐与主题预览、外观页浮窗字号五点选择器、设置/弹窗滚动条主题样式、通知点击后的设置窗抬前逻辑、历史/诊断清理、OpenAI 与 Transmart 响应解析、加载态通道显示、悬浮按钮清晰度和去重约束、翻译卡片拖拽/外部点击关闭入口、多卡片事件隔离约束、弹窗 Markdown 渲染回归和 UI 字重约束等逻辑。WPF 可视交互仍需要真实应用试用补充验证。
 
 ## 打包策略
 
@@ -202,7 +210,7 @@ ClipboardSelectionProvider 读取当前剪贴板文本
 
 - `global.json` 指定 .NET SDK `10.0.300`。
 - `NuGet.Config` 使用 `.nuget\offline` 作为优先包源，并保留 `nuget.org` 作为在线包源。
-- `scripts\Use-HermesEnv.ps1` 统一设置 `DOTNET_CLI_HOME`、NuGet 缓存、scratch/cache 目录和可选代理，并确保 `.nuget\offline` 本地源目录存在。
+- `scripts\Use-HermesEnv.ps1` 统一设置 `DOTNET_CLI_HOME`、NuGet 缓存、scratch/cache 目录和可选代理，并确保 `.nuget\offline` 本地源目录存在；构建中间目录默认落在系统临时目录，避免受工作区删除限制影响。
 - `scripts\Restore-Hermes.ps1`、`scripts\Test-Hermes.ps1`、`scripts\Publish-Hermes.ps1` 和 `scripts\Package-HermesRelease.ps1` 是标准入口。
 
 自包含发布需要以下 runtime packs 放在 `.nuget\offline`：
@@ -222,6 +230,8 @@ artifacts\publish\Hermes.Windows\manual-test\win-x64-self-contained\
 ```
 
 日常修复发布固定覆盖上述 `win-x64-self-contained` 目录，不再为每次 UI 或小修复新增带后缀的发布目录；如果目录被正在运行的 Hermes 锁定，应先提示用户退出应用再覆盖，避免继续产生废弃包。
+
+开发 agent 每次完成代码、文档或配置修改后，交付前都必须按 `AGENTS.md` 执行一次发行/打包。默认发行方式是运行 `scripts\Publish-Hermes.ps1`，直接覆盖上述 `manual-test\win-x64-self-contained\` 目录，并且必须保持 `win-x64 self-contained`，随包携带 .NET runtime，不能要求客户额外下载安装 .NET。对外分发 zip 只作为覆盖 self-contained 目录后的附加步骤。
 
 推荐命令：
 
@@ -248,7 +258,7 @@ artifacts\release\v0.1.0\
 如果本机缺少自包含发布所需的 .NET runtime packs，且 NuGet 无法访问，可以临时发布 framework-dependent 包用于本机试用：
 
 ```powershell
-D:\Code\Env\dotnet\dotnet.exe publish src\Hermes.Windows\Hermes.Windows.csproj -c Release -r win-x64 --no-self-contained -p:NuGetAudit=false -p:RestoreIgnoreFailedSources=true --artifacts-path artifacts\dotnet -o artifacts\publish\Hermes.Windows\manual-test\win-x64-framework-dependent
+C:\Code\Env\dotnet\dotnet.exe publish src\Hermes.Windows\Hermes.Windows.csproj -c Release -r win-x64 --no-self-contained -p:NuGetAudit=false -p:RestoreIgnoreFailedSources=true --artifacts-path artifacts\dotnet -o artifacts\publish\Hermes.Windows\manual-test\win-x64-framework-dependent
 ```
 
 临时 framework-dependent 包不作为正式测试分发目标，只用于当前开发机或已安装 .NET Desktop Runtime 10 的机器。
@@ -305,7 +315,7 @@ Hermes 的用户数据保存在：
 ## 已知限制
 
 - UI Automation 在浏览器、PDF、Electron、自绘编辑器中的行为不完全一致。
-- 自动悬浮按钮无法保证所有应用都出现。
+- 自动悬浮按钮在 UI Automation 预读失败时会使用手势兜底显示，但仍无法保证所有应用都能出现按钮或复制到选区文本。
 - 当前没有完整历史列表 UI，仅保留高级页清空历史动作。
 - 设置窗口的 Mica 背景依赖 Windows 11 DWM 能力；在不支持的系统或透明窗口组合受限时会退回内置深色背景。
 - 真实多显示器、高 DPI、不同应用兼容性需要持续人工试用。
@@ -342,3 +352,53 @@ Hermes 的用户数据保存在：
 | 2026-05-27 | 修正设置页鼠标切换页签后的自动焦点：点击“隐私”等菜单栏时清除 WPF 自动落到第一个 ToggleSwitch 的焦点，避免保存翻译历史开关出现误导性蓝框，同时保留键盘导航焦点。 | Shell / UI-Themes |
 | 2026-05-27 | 将 README 改为面向最终用户的项目入口，新增章鱼主题 README 插图、文生图提示词、v0.1.0 Release Notes 草稿和 `Package-HermesRelease.ps1`，用于生成 GitHub Release portable zip 与校验文件。 | 文档维护 / 打包发布 |
 | 2026-05-27 | 新增根目录 `UI.md` 记录 Hermes UI 设计规范；README 头图改为 `docs/assets/Info.png`；整合 `.gitignore` 以保留 `docs/`、脚本和应用资源并忽略本地缓存、构建产物、日志、密钥和压缩包；浮动按钮浅色/深色 SVG 从根目录迁移到 `src\Hermes.Windows\Resources\Icons\`，保持根目录整洁。 | 文档维护 / UI-Themes / 仓库结构 |
+| 2026-05-29 | 默认翻译提供方切换为 Tencent Transmart（`https://transmart.qq.com/api` / `normal`），OpenAI 改为可选；新增 `ProviderRoutingTranslationService` 与 `TransmartTranslationService`，并在设置页放宽 Transmart 的 API Key 校验。 | Translation / Settings |
+| 2026-05-29 | 新增 Alt 划词术语解释模式：`Ctrl` 划词翻译，`Alt` 划词解释；翻译设置新增“解释个性化偏好”，解释 Prompt 按该偏好生成并与普通翻译共享悬浮按钮和结果卡片。 | Input / Selection / Translation / Shell |
+| 2026-05-29 | 修复多固定卡片串扰：Overlay 改为多浮窗跟踪，重试/关闭事件按浮窗实例回传；Coordinator 对每张卡片维护请求上下文并直接更新对应浮窗，避免旧卡片影响当前请求；同时移除卡片宽度 420→360 的隐藏映射并为开机启动注册增加异常保护。 | Overlay / Translation / Settings |
+| 2026-05-29 | 更新本地构建脚本：环境默认 `C:\Code\Env\dotnet`，将中间编译目录迁移到系统临时目录并按运行批次输出到 `artifacts\dotnet-verify\bin\<runId>\`，修复当前环境下 `obj` 删除受限导致的构建失败。 | 开发环境 / 打包发布 |
+| 2026-05-29 | 翻译设置改为双通道：`AI翻译` 使用 Transmart，`AI解释` 使用 OpenAI，并新增 `UseOpenAiForTranslation` 开关控制翻译通道；解释模式固定走 OpenAI，翻译模式按开关在 OpenAI/Transmart 之间路由；保留旧版单 Provider 配置的自动迁移兼容。 | Shell / Translation / Settings |
+| 2026-05-30 | 全仓执行中文文案乱码审计并修复弹窗遗留乱码：`CopyLabel` 复位文案改回“复制译文”，统一翻译卡片加载/长耗时中文提示文案；新增覆盖弹窗中文可读性的回归测试，防止再次引入乱码。 | Overlay / Tests / 文档维护 |
+| 2026-05-30 | 设置窗口标题栏改为仅保留关闭按钮（移除最小化）；`AI解释` 区域“测试连接”改用专用按钮样式，提升到与 API Key 输入框同高，增加与输入框的水平间距，并收窄按钮宽度以减少拥挤感。 | Shell / UI-Themes / Tests |
+| 2026-05-30 | 根据验收反馈将 `AI解释` 区域“测试连接”按钮改为列内右对齐，保持窄宽度同时让按钮边界更贴合右侧布局。 | Shell / UI-Themes / Tests |
+| 2026-05-30 | 继续优化浅色主题按钮可见性：`测试连接`、`清空记录`、`刷新列表` 等按钮改为使用 keycap 背景与边框资源，避免浅色下“仅文字无按钮底”；`确定保存` 主按钮文字固定白色，确保浅色主题下对比度。 | Shell / UI-Themes / Tests |
+| 2026-05-30 | 翻译卡片正文改为统一 Markdown 渲染链路：新增 `PopupMarkdownRenderer`，让翻译与解释（含流式输出）共享同一渲染器，补齐标题/列表/引用/代码块/行内样式显示，并修复未闭合 Markdown 标记导致的流式渲染卡死。 | Overlay / Translation / Tests |
+| 2026-05-30 | 悬浮按钮新增手动高对比气球样式：在外观页增加“气球样式”可选项（黑框白底 / 白框黑底），并将选项写入 `UiSettings.FloatingButtonStyle`，由 Overlay 在显示按钮时应用。 | Shell / Overlay / Settings / Tests |
+| 2026-05-30 | 根据验收反馈回退悬浮按钮实底边框方案：按钮恢复透明圆形命中区与 25×25 图标尺寸，图标内容改为同步 `src/Hermes.Windows/Resources/Icons/FloatingButtonLight.svg` / `FloatingButtonDark.svg` 的矢量形状，并继续沿用外观页“气球样式”切换。 | Overlay / Shell / Tests |
+| 2026-05-30 | 根据新验收要求，删除仓库根目录 `think-light.svg` / `think-dark.svg`，并将悬浮按钮图标源固定为 `src/Hermes.Windows/Resources/Icons/` 下的图标文件后再写死到 XAML。 | Overlay / Resources / Tests |
+| 2026-05-30 | 修复 Ctrl/Alt 划词悬浮按钮过度依赖 UI Automation 预读的问题：预读失败时不再 suppress 按钮，而是按手势置信度显示按钮，点击后走显式读取和受控剪贴板兜底，提升 Zotero、PDF、Electron 和自绘控件兼容性。 | Selection / Overlay / Tests |
+| 2026-05-30 | 将“每次修改后必须发行/打包一次”的交付要求写入 `AGENTS.md`，并同步到打包策略，确保用户每轮修改后都能拿到可试用产物或明确的发行阻塞说明。 | 文档维护 / 打包发布 |
+| 2026-05-30 | 明确发行默认直接覆盖 `manual-test\win-x64-self-contained\`，且必须发布 self-contained 产物随包携带 .NET runtime，release zip 仅作为附加分发步骤。 | 文档维护 / 打包发布 |
+| 2026-05-30 | 优化启动和被动划词体验：缩短鼠标释放后的固定等待，为 UI Automation 预读增加时间盒，避免 Zotero 等应用拖慢悬浮按钮显示；启动通知显示后再延迟注册全局触发器，降低启动时鼠标卡顿；点击启动通知可打开设置窗口。 | App / Selection / Translation / Tray / Tests |
+| 2026-05-30 | 继续收紧 Zotero 被动划词显示延迟：将按钮显示前的敏感控件 UI Automation 检查改为短时间盒，并把被动预读预算缩短到 35ms；预读或敏感检查超时不再阻塞按钮显示，点击按钮后仍走显式读取和兜底。 | Selection / Tests |
+| 2026-05-30 | 翻译卡片和设置窗口在无边框外观下恢复边缘/四角原生缩放命中测试，并自动保存用户调整后的尺寸；外观页新增悬浮按钮五档图标大小设置，按钮点击热区随图标大小同步缩放，同时移除弹窗默认尺寸控制。 | Overlay / Shell / Settings / Tests |
+| 2026-05-30 | 将外观页悬浮按钮大小设置从下拉框改为五点横向选择器，左/右两端以白底小/大图标提示尺度且不显示档位文字；翻译卡片正文滚动条改为与设置窗口一致的细圆角样式，并通过主题资源在浅色/深色下切换颜色。 | Shell / Overlay / UI-Themes / Tests |
+| 2026-05-30 | 继续打磨外观与提醒交互：图标大小选择器两端预览改为真实悬浮按钮图标；浮窗字号从连续滑块改为五点横向选择器，并让正文和原文预览都实际应用该字号；点击右下角启动提醒后，设置窗口会执行显式抬前流程，避免被其他应用遮挡。 | Shell / Overlay / App / Tray / Tests |
+| 2026-05-31 | 修复外观页五点控件对齐：图标大小与浮窗字号轨道统一列宽和中段边距；图标预览去掉圆形实底/边框并随浅色/深色主题切换 light/dark 真实悬浮按钮图标；翻译加载态在流式输出和长耗时状态中持续显示 `Tencent` 或 OpenAI 模型名；被动划词候选增加取消与遗留按钮清理，避免同一次划词后出现重复悬浮按钮。 | Shell / Overlay / Translation / Tests / Docs |
+| 2026-05-31 | 调整浮窗字号档位为 `12 / 14 / 16 / 18 / 20`，默认字号改为 `16`，并将弹窗字号上限同步放宽到 `20`。 | Settings / Shell / Overlay / Tests |
+| 2026-05-31 | 修正外观页图标大小和浮窗字号端点预览的居中方式：两行左右端点预览都固定在 34px 槽位中心，图标 Viewbox 与 `A` 字样不再分别左/右贴边。 | Shell / Tests |
+| 2026-05-31 | 将外观页浮窗字号端点预览从 `TextBlock` 字母改为固定 24x24 画布的描边矢量 `A` 图标，消除字体基线导致的视觉错位，并让变化在界面上可见。 | Shell / Tests |
+
+### 2026-05-29 Transmart Verification Notes
+
+- Manual smoke tests against `https://transmart.qq.com/api/imt` were executed on 2026-05-29.
+- Result: HTTP `200` with `header.ret_code = "succ"` and non-empty `auto_translation` output.
+- Repeated requests with current payload structure also returned successful responses.
+- Conclusion: current endpoint/payload is valid; prior user issues were likely caused by stale OpenAI-style settings leaking into Transmart mode.
+
+### 2026-05-29 Candidate Flow Hotfix
+
+- Fixed a regression where `Ctrl` selection -> floating-button translation could stay in loading forever.
+- Root cause: candidate flow created a request CTS, then called `TranslateSelectionAsync`, which immediately canceled that same token and linked a new CTS to an already canceled token.
+- Fix: candidate flow no longer creates/reuses `_currentRequestCts` before `TranslateSelectionAsync`; it now passes the outer `cancellationToken` so request CTS ownership stays inside `TranslateSelectionAsync`.
+- Added regression test: `translation coordinator candidate flow does not cancel its own request token`.
+
+### 2026-05-30 Translation Channel Toggle and Loading Indicator Fix
+
+- Fixed a routing regression where translation could still go through OpenAI after users turned off `UseOpenAiForTranslation`.
+- Settings compatibility migration now only applies legacy provider migration when `UseOpenAiForTranslation` is missing from `settings.json` (legacy single-provider schema).
+- Save flow explicitly skips legacy provider migration, preventing stale legacy `Provider=OpenAI` data from overriding the current toggle state.
+- Loading state now shows the resolved runtime channel and preserves it during streaming and long-running popup states:
+  - `正在翻译 (Tencent)...` when translation routes to Transmart.
+  - `正在翻译 (<OpenAI model>)...` when translation routes to OpenAI.
+  - `正在解释 (<OpenAI model>)...` for explanation mode (always OpenAI).
+- Added regression tests for migration skip behavior and loading-state channel visibility.

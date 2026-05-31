@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
@@ -17,9 +17,11 @@ namespace Hermes.Windows.Overlay;
 public partial class TranslationPopupWindow : Window
 {
     private readonly System.Windows.Threading.DispatcherTimer _copyResetTimer;
+    private readonly System.Windows.Threading.DispatcherTimer _sizePersistTimer;
     private readonly StringBuilder _streamingText = new();
     private string? _translatedText;
     private string? _sourcePreview;
+    private string? _loadingStateText;
     private bool _isPinned;
     private bool _clamping;
     private bool _isClosing;
@@ -36,6 +38,15 @@ public partial class TranslationPopupWindow : Window
             CopyLabel.Text = "复制译文";
             CopyButton.Foreground = (WpfBrush)FindResource("Brush.TextSecondary");
         };
+        _sizePersistTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(280) };
+        _sizePersistTimer.Tick += (_, _) =>
+        {
+            _sizePersistTimer.Stop();
+            if (IsLoaded && ActualWidth > 0 && ActualHeight > 0)
+            {
+                SizeChangedByUser?.Invoke(this, new PopupSizeChangedEventArgs(ActualWidth, ActualHeight));
+            }
+        };
     }
 
     public bool IsPinned => _isPinned;
@@ -48,12 +59,15 @@ public partial class TranslationPopupWindow : Window
 
     public event EventHandler? SettingsRequested;
 
+    public event EventHandler<PopupSizeChangedEventArgs>? SizeChangedByUser;
+
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
         var hwnd = new WindowInteropHelper(this).Handle;
         var style = NativeMethods.GetWindowLongPtr(hwnd, -20).ToInt64();
         NativeMethods.SetWindowLongPtr(hwnd, -20, new IntPtr(style | NativeMethods.WsExNoActivate | NativeMethods.WsExToolWindow));
+        HwndSource.FromHwnd(hwnd)?.AddHook(WindowMessageHook);
     }
 
     protected override void OnContentRendered(EventArgs e)
@@ -68,16 +82,29 @@ public partial class TranslationPopupWindow : Window
         ClampToScreen();
     }
 
+    protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)
+    {
+        base.OnRenderSizeChanged(sizeInfo);
+        UpdateBodyScrollHeight();
+        if (IsLoaded && sizeInfo.WidthChanged || IsLoaded && sizeInfo.HeightChanged)
+        {
+            _sizePersistTimer.Stop();
+            _sizePersistTimer.Start();
+        }
+    }
+
     public void ApplyTheme(bool dark, double opacity, double fontSize)
     {
         _targetOpacity = Math.Clamp(opacity, 0.75, 1);
         Opacity = _targetOpacity;
-        var appliedFontSize = Math.Clamp(fontSize, 13, 16);
+        var appliedFontSize = Math.Clamp(fontSize, 12, 20);
         BodyText.FontSize = appliedFontSize;
         BodyText.LineHeight = appliedFontSize * 1.58;
+        SourcePreviewText.FontSize = appliedFontSize;
+        SourcePreviewText.LineHeight = appliedFontSize * 1.45;
         var screen = Forms.Screen.FromPoint(Forms.Cursor.Position).WorkingArea;
-        MaxHeight = screen.Height * 0.6;
-        BodyScroll.MaxHeight = Math.Max(140, MaxHeight - 150);
+        MaxHeight = Math.Min(720, screen.Height * 0.86);
+        UpdateBodyScrollHeight();
     }
 
     public void SetSourcePreview(string text)
@@ -87,9 +114,10 @@ public partial class TranslationPopupWindow : Window
         RenderSourcePreview();
     }
 
-    public void SetLoading()
+    public void SetLoading(string? stateText = null, string? bodyText = null)
     {
         _translatedText = null;
+        _loadingStateText = string.IsNullOrWhiteSpace(stateText) ? "正在翻译..." : stateText;
         _streamingText.Clear();
         _hasStreamingText = false;
         CopyButton.IsEnabled = false;
@@ -99,10 +127,9 @@ public partial class TranslationPopupWindow : Window
         ProgressRail.Visibility = Visibility.Visible;
         ProgressRail.BeginAnimation(OpacityProperty, null);
         ProgressRail.Opacity = 1;
-        StateText.Text = "正在转译...";
+        StateText.Text = _loadingStateText;
         StateText.Foreground = (WpfBrush)FindResource("Brush.TextMuted");
-        BodyText.Inlines.Clear();
-        BodyText.Inlines.Add(new Run("正在翻译"));
+        RenderTranslatedText(string.IsNullOrWhiteSpace(bodyText) ? "正在翻译" : bodyText);
         StartProgressAnimation();
     }
 
@@ -113,7 +140,7 @@ public partial class TranslationPopupWindow : Window
             return;
         }
 
-        StateText.Text = "仍在处理...";
+        StateText.Text = _loadingStateText ?? "仍在处理...";
         BodyScroll.Visibility = Visibility.Collapsed;
         ErrorPanel.Visibility = Visibility.Collapsed;
         LongRunningPanel.Visibility = Visibility.Visible;
@@ -123,6 +150,7 @@ public partial class TranslationPopupWindow : Window
     public void SetTranslation(string translatedText)
     {
         _translatedText = translatedText;
+        _loadingStateText = null;
         _streamingText.Clear();
         _hasStreamingText = false;
         CopyButton.IsEnabled = true;
@@ -151,7 +179,8 @@ public partial class TranslationPopupWindow : Window
         LongRunningPanel.Visibility = Visibility.Collapsed;
         SpinnerRotateTransform.BeginAnimation(RotateTransform.AngleProperty, null);
         BodyScroll.Visibility = Visibility.Visible;
-        StateText.Text = "正在转译...";
+        _loadingStateText ??= "正在翻译...";
+        StateText.Text = _loadingStateText;
         StateText.Foreground = (WpfBrush)FindResource("Brush.TextMuted");
         RenderTranslatedText(_streamingText.ToString());
     }
@@ -164,6 +193,7 @@ public partial class TranslationPopupWindow : Window
     public void SetError(string message, bool showSettings)
     {
         _translatedText = null;
+        _loadingStateText = null;
         _streamingText.Clear();
         _hasStreamingText = false;
         CopyButton.IsEnabled = false;
@@ -175,7 +205,7 @@ public partial class TranslationPopupWindow : Window
         FadeOutProgress();
         StateText.Text = "无法翻译";
         StateText.Foreground = (WpfBrush)FindResource("Brush.Danger");
-        ErrorText.Text = "Hermes 提示：" + message;
+        ErrorText.Text = $"Hermes 提示：{message}";
     }
 
     public void CloseWithFade()
@@ -262,46 +292,35 @@ public partial class TranslationPopupWindow : Window
 
     private void RenderTranslatedText(string text)
     {
-        BodyText.Inlines.Clear();
-        var normalized = text.Replace("\r\n", "\n", StringComparison.Ordinal);
-        var lines = normalized.Split('\n');
-        for (var i = 0; i < lines.Length; i++)
-        {
-            AppendMarkdownLine(lines[i]);
-            if (i < lines.Length - 1)
-            {
-                BodyText.Inlines.Add(new LineBreak());
-            }
-        }
+        PopupMarkdownRenderer.Render(BodyText, text, ResolveBrushResource);
     }
 
-    private void AppendMarkdownLine(string line)
+    private IntPtr WindowMessageHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        var cursor = 0;
-        while (cursor < line.Length)
+        if (msg != NativeMethods.WmNcHitTest)
         {
-            var start = line.IndexOf("**", cursor, StringComparison.Ordinal);
-            if (start < 0)
-            {
-                BodyText.Inlines.Add(new Run(line[cursor..]));
-                return;
-            }
-
-            if (start > cursor)
-            {
-                BodyText.Inlines.Add(new Run(line[cursor..start]));
-            }
-
-            var end = line.IndexOf("**", start + 2, StringComparison.Ordinal);
-            if (end < 0)
-            {
-                BodyText.Inlines.Add(new Run(line[start..]));
-                return;
-            }
-
-            BodyText.Inlines.Add(new Run(line[(start + 2)..end]) { FontWeight = FontWeights.Medium });
-            cursor = end + 2;
+            return IntPtr.Zero;
         }
+
+        var result = WindowResizeHitTest.HitTest(this, lParam);
+        if (result == new IntPtr(NativeMethods.HtClient))
+        {
+            return IntPtr.Zero;
+        }
+
+        handled = true;
+        return result;
+    }
+
+    private void UpdateBodyScrollHeight()
+    {
+        var availableHeight = (ActualHeight > 0 ? ActualHeight : Height) - 150;
+        BodyScroll.MaxHeight = Math.Max(80, availableHeight);
+    }
+
+    private WpfBrush ResolveBrushResource(string key)
+    {
+        return (WpfBrush)FindResource(key);
     }
 
     private void MarkCopied()
@@ -413,4 +432,17 @@ public partial class TranslationPopupWindow : Window
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
         });
     }
+}
+
+public sealed class PopupSizeChangedEventArgs : EventArgs
+{
+    public PopupSizeChangedEventArgs(double width, double height)
+    {
+        Width = width;
+        Height = height;
+    }
+
+    public double Width { get; }
+
+    public double Height { get; }
 }

@@ -11,6 +11,7 @@ using Hermes.Windows.Settings;
 using Hermes.Windows.Translation;
 using Hermes.Windows.UI.Themes;
 using WpfInput = System.Windows.Input;
+using WpfRadioButton = System.Windows.Controls.RadioButton;
 
 namespace Hermes.Windows.Shell;
 
@@ -18,6 +19,7 @@ public partial class SettingsWindow : Window
 {
     private const string ApiKeyMask = "********";
     private const double ShellCornerRadius = 14;
+    private static readonly double[] PopupFontSizeValues = [12, 14, 16, 18, 20];
 
     private readonly SettingsService _settingsService;
     private readonly ISecretStorageService _secretStorage;
@@ -30,6 +32,7 @@ public partial class SettingsWindow : Window
     private bool _apiKeyVisible;
     private bool _isRecordingHotkey;
     private string? _hotkeyBeforeRecording;
+    private System.Windows.Threading.DispatcherTimer? _windowSizePersistTimer;
 
     public SettingsWindow(
         SettingsService settingsService,
@@ -48,6 +51,13 @@ public partial class SettingsWindow : Window
         _historyService = historyService;
         _triggerDiagnosticsService = triggerDiagnosticsService;
         _logger = logger;
+        _windowSizePersistTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(320) };
+        _windowSizePersistTimer.Tick += (_, _) =>
+        {
+            _windowSizePersistTimer.Stop();
+            PersistWindowSize();
+        };
+        ApplyStoredWindowSize();
         InitializeOptionSources();
         LoadSettings();
     }
@@ -62,6 +72,19 @@ public partial class SettingsWindow : Window
     {
         base.OnSourceInitialized(e);
         ApplyWindowChromeTheme();
+        var hwnd = new WindowInteropHelper(this).Handle;
+        HwndSource.FromHwnd(hwnd)?.AddHook(WindowMessageHook);
+    }
+
+    protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)
+    {
+        base.OnRenderSizeChanged(sizeInfo);
+        UpdateRootShellClip();
+        if (IsLoaded && (sizeInfo.WidthChanged || sizeInfo.HeightChanged))
+        {
+            _windowSizePersistTimer?.Stop();
+            _windowSizePersistTimer?.Start();
+        }
     }
 
     private void Window_Loaded(object sender, RoutedEventArgs e)
@@ -73,8 +96,8 @@ public partial class SettingsWindow : Window
 
     private void InitializeOptionSources()
     {
-        ProviderCombo.ItemsSource = SettingsWindowOptions.Providers;
         StyleCombo.ItemsSource = SettingsWindowOptions.TranslationStyles;
+        FloatingButtonStyleCombo.ItemsSource = SettingsWindowOptions.FloatingButtonStyles;
     }
 
     private void LoadSettings()
@@ -83,10 +106,12 @@ public partial class SettingsWindow : Window
         try
         {
             var settings = _settingsService.Current;
-            SelectComboValue(ProviderCombo, settings.Api.Provider);
-            BaseUrlText.Text = settings.Api.BaseUrl;
+            TransmartBaseUrlText.Text = settings.Api.Transmart.BaseUrl;
+            TransmartModelText.Text = settings.Api.Transmart.Model;
+            OpenAiBaseUrlText.Text = settings.Api.OpenAi.BaseUrl;
+            OpenAiModelText.Text = settings.Api.OpenAi.Model;
+            OpenAiForTranslationCheck.IsChecked = settings.Api.UseOpenAiForTranslation;
             SetApiKeyHidden(_secretStorage.HasApiKey() ? ApiKeyMask : string.Empty);
-            ModelText.Text = settings.Api.Model;
 
             SelectComboValue(StyleCombo, settings.Translation.Style);
             MaxCharsText.Text = settings.Translation.MaxCharacters.ToString();
@@ -94,20 +119,22 @@ public partial class SettingsWindow : Window
             PromptText.Text = string.IsNullOrWhiteSpace(settings.Translation.SystemPrompt)
                 ? TranslationPromptBuilder.DefaultSystemPrompt
                 : settings.Translation.SystemPrompt;
+            ExplanationPreferenceText.Text = string.IsNullOrWhiteSpace(settings.Translation.ExplanationPreference)
+                ? TranslationPromptBuilder.DefaultExplanationPreference
+                : settings.Translation.ExplanationPreference;
 
             AutoButtonCheck.IsChecked = settings.Triggers.AutoShowSelectionButton;
             SelectTheme(settings.Ui.Theme);
-            PopupWidthSlider.Value = Math.Clamp(settings.Ui.PopupWidth, 320, 480);
-            FontSizeSlider.Value = Math.Clamp(settings.Ui.FontSize, 12, 20);
+            SelectComboValue(FloatingButtonStyleCombo, settings.Ui.FloatingButtonStyle);
+            SetFloatingButtonSizeSelection(settings.Ui.FloatingButtonSize);
+            SetPopupFontSizeSelection(settings.Ui.FontSize);
             OpacitySlider.Value = Math.Clamp(settings.Ui.Opacity, 0.75, 1);
             UpdateAppearanceValueText();
 
             SaveHistoryCheck.IsChecked = settings.Privacy.SaveHistory;
             SaveOriginalCheck.IsChecked = settings.Privacy.SaveOriginalText;
             StartupCheck.IsChecked = settings.Startup.LaunchAtSignIn;
-            ApiKeyStatusText.Text = _secretStorage.HasApiKey()
-                ? "凭据已通过 Windows DPAPI 执行本机用户级加密存储。输入新值并保存即可替换。"
-                : "尚未保存 API Key。凭据保存后会通过 Windows DPAPI 加密写入本机。";
+            UpdateApiHintText();
             UpdateHeaderHotkey(settings.Triggers.Hotkey);
             RefreshDiagnostics();
         }
@@ -142,15 +169,34 @@ public partial class SettingsWindow : Window
             }
 
             var settings = _settingsService.Current;
-            settings.Api.Provider = GetComboValue(ProviderCombo);
-            settings.Api.BaseUrl = BaseUrlText.Text.Trim();
-            settings.Api.Model = ModelText.Text.Trim();
+            settings.Api.Transmart.BaseUrl = TransmartBaseUrlText.Text.Trim();
+            settings.Api.Transmart.Model = TransmartModelText.Text.Trim();
+            settings.Api.OpenAi.BaseUrl = OpenAiBaseUrlText.Text.Trim();
+            settings.Api.OpenAi.Model = OpenAiModelText.Text.Trim();
+            settings.Api.UseOpenAiForTranslation = OpenAiForTranslationCheck.IsChecked == true;
+
+            // Keep legacy flat fields in sync for backward compatibility.
+            if (settings.Api.UseOpenAiForTranslation)
+            {
+                settings.Api.Provider = "OpenAI";
+                settings.Api.BaseUrl = settings.Api.OpenAi.BaseUrl;
+                settings.Api.Model = settings.Api.OpenAi.Model;
+            }
+            else
+            {
+                settings.Api.Provider = "Transmart";
+                settings.Api.BaseUrl = settings.Api.Transmart.BaseUrl;
+                settings.Api.Model = settings.Api.Transmart.Model;
+            }
 
             settings.Translation.Style = GetComboValue(StyleCombo);
             settings.Translation.PreserveFormatting = PreserveFormatCheck.IsChecked == true;
             settings.Translation.SystemPrompt = string.IsNullOrWhiteSpace(PromptText.Text)
                 ? TranslationPromptBuilder.DefaultSystemPrompt
                 : PromptText.Text.Trim();
+            settings.Translation.ExplanationPreference = string.IsNullOrWhiteSpace(ExplanationPreferenceText.Text)
+                ? TranslationPromptBuilder.DefaultExplanationPreference
+                : ExplanationPreferenceText.Text.Trim();
             if (int.TryParse(MaxCharsText.Text, out var maxChars))
             {
                 settings.Translation.MaxCharacters = Math.Clamp(maxChars, 100, 50000);
@@ -159,8 +205,15 @@ public partial class SettingsWindow : Window
             settings.Triggers.AutoShowSelectionButton = AutoButtonCheck.IsChecked == true;
             settings.Triggers.Hotkey = GetHeaderHotkeyText();
             settings.Ui.Theme = GetSelectedThemeValue();
-            settings.Ui.PopupWidth = Math.Clamp(Math.Round(PopupWidthSlider.Value), 320, 480);
-            settings.Ui.FontSize = Math.Clamp(Math.Round(FontSizeSlider.Value), 12, 20);
+            var floatingButtonStyle = GetComboValue(FloatingButtonStyleCombo);
+            settings.Ui.FloatingButtonStyle = string.IsNullOrWhiteSpace(floatingButtonStyle)
+                ? "DarkBorderLightFill"
+                : floatingButtonStyle;
+            var floatingButtonSize = GetFloatingButtonSizeSelection();
+            settings.Ui.FloatingButtonSize = string.IsNullOrWhiteSpace(floatingButtonSize)
+                ? "Medium"
+                : floatingButtonSize;
+            settings.Ui.FontSize = GetPopupFontSizeSelection();
             settings.Ui.Opacity = Math.Clamp(OpacitySlider.Value, 0.75, 1);
 
             settings.Privacy.SaveHistory = SaveHistoryCheck.IsChecked == true;
@@ -248,18 +301,33 @@ public partial class SettingsWindow : Window
     {
         message = string.Empty;
 
-        if (!Uri.TryCreate(BaseUrlText.Text.Trim(), UriKind.Absolute, out var baseUri)
-            || baseUri.Scheme is not ("http" or "https"))
+        if (!Uri.TryCreate(TransmartBaseUrlText.Text.Trim(), UriKind.Absolute, out var transmartBaseUri)
+            || transmartBaseUri.Scheme is not ("http" or "https"))
         {
-            message = "Base URL 需要是有效的 http 或 https 地址。";
-            BaseUrlText.Focus();
+            message = "Transmart Base URL 需要是有效的 http 或 https 地址。";
+            TransmartBaseUrlText.Focus();
             return false;
         }
 
-        if (string.IsNullOrWhiteSpace(ModelText.Text))
+        if (string.IsNullOrWhiteSpace(TransmartModelText.Text))
         {
-            message = "Model 不能为空。";
-            ModelText.Focus();
+            message = "Transmart Model 不能为空。";
+            TransmartModelText.Focus();
+            return false;
+        }
+
+        if (!Uri.TryCreate(OpenAiBaseUrlText.Text.Trim(), UriKind.Absolute, out var openAiBaseUri)
+            || openAiBaseUri.Scheme is not ("http" or "https"))
+        {
+            message = "OpenAI Base URL 需要是有效的 http 或 https 地址。";
+            OpenAiBaseUrlText.Focus();
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(OpenAiModelText.Text))
+        {
+            message = "OpenAI Model 不能为空。";
+            OpenAiModelText.Focus();
             return false;
         }
 
@@ -277,9 +345,11 @@ public partial class SettingsWindow : Window
             return false;
         }
 
-        if (!_secretStorage.HasApiKey() && string.IsNullOrWhiteSpace(GetApiKeyInput()))
+        if (OpenAiForTranslationCheck.IsChecked == true
+            && !_secretStorage.HasApiKey()
+            && string.IsNullOrWhiteSpace(GetApiKeyInput()))
         {
-            message = "请先填写 API Key，或保存已有的本机加密 Key。";
+            message = "已启用 OpenAI 翻译通道，请先设置 API Key。";
             ApiKeyBox.Focus();
             return false;
         }
@@ -364,6 +434,43 @@ public partial class SettingsWindow : Window
         UpdateRootShellClip();
     }
 
+    private IntPtr WindowMessageHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (msg != NativeMethods.WmNcHitTest)
+        {
+            return IntPtr.Zero;
+        }
+
+        var result = WindowResizeHitTest.HitTest(this, lParam);
+        if (result == new IntPtr(NativeMethods.HtClient))
+        {
+            return IntPtr.Zero;
+        }
+
+        handled = true;
+        return result;
+    }
+
+    private void ApplyStoredWindowSize()
+    {
+        var settings = _settingsService.Current;
+        Width = Math.Clamp(settings.Ui.SettingsWindowWidth, MinWidth, 1280);
+        Height = Math.Clamp(settings.Ui.SettingsWindowHeight, MinHeight, 900);
+    }
+
+    private void PersistWindowSize()
+    {
+        if (!IsLoaded || ActualWidth <= 0 || ActualHeight <= 0)
+        {
+            return;
+        }
+
+        var settings = _settingsService.Current;
+        settings.Ui.SettingsWindowWidth = Math.Clamp(Math.Round(ActualWidth), MinWidth, 1280);
+        settings.Ui.SettingsWindowHeight = Math.Clamp(Math.Round(ActualHeight), MinHeight, 900);
+        _ = _settingsService.SaveAsync(settings);
+    }
+
     private void UpdateRootShellClip()
     {
         if (RootShell.ActualWidth <= 0 || RootShell.ActualHeight <= 0)
@@ -383,11 +490,6 @@ public partial class SettingsWindow : Window
         {
             DragMove();
         }
-    }
-
-    private void Minimize_Click(object sender, RoutedEventArgs e)
-    {
-        WindowState = WindowState.Minimized;
     }
 
     private void Close_Click(object sender, RoutedEventArgs e)
@@ -426,6 +528,37 @@ public partial class SettingsWindow : Window
         return _apiKeyVisible ? ApiKeyRevealText.Text.Trim() : ApiKeyBox.Password.Trim();
     }
 
+    private void OpenAiForTranslationCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_isLoadingSettings)
+        {
+            return;
+        }
+
+        UpdateApiHintText();
+    }
+
+    private void UpdateApiHintText()
+    {
+        if (ApiKeyStatusText is null)
+        {
+            return;
+        }
+
+        var hasStoredApiKey = _secretStorage.HasApiKey();
+        if (OpenAiForTranslationCheck.IsChecked == true)
+        {
+            ApiKeyStatusText.Text = hasStoredApiKey
+                ? "已启用 OpenAI 翻译通道：翻译和解释都会走 OpenAI。"
+                : "已启用 OpenAI 翻译通道，但尚未保存 API Key。";
+            return;
+        }
+
+        ApiKeyStatusText.Text = hasStoredApiKey
+            ? "翻译走 Transmart，解释走 OpenAI。"
+            : "翻译走 Transmart。若要使用解释模式，请先保存 OpenAI API Key。";
+    }
+
     private void ThemeRadio_Checked(object sender, RoutedEventArgs e)
     {
         if (!_isLoadingSettings)
@@ -440,6 +573,22 @@ public partial class SettingsWindow : Window
         if (!_isLoadingSettings)
         {
             UpdateAppearanceValueText();
+        }
+    }
+
+    private void FloatingButtonSizeDot_Checked(object sender, RoutedEventArgs e)
+    {
+        if (_isLoadingSettings)
+        {
+            return;
+        }
+    }
+
+    private void PopupFontSizeDot_Checked(object sender, RoutedEventArgs e)
+    {
+        if (_isLoadingSettings)
+        {
+            return;
         }
     }
 
@@ -593,13 +742,11 @@ public partial class SettingsWindow : Window
 
     private void UpdateAppearanceValueText()
     {
-        if (PopupWidthValueText is null || FontSizeValueText is null || OpacityValueText is null)
+        if (OpacityValueText is null)
         {
             return;
         }
 
-        PopupWidthValueText.Text = $"{Math.Round(PopupWidthSlider.Value):0} px";
-        FontSizeValueText.Text = $"{Math.Round(FontSizeSlider.Value):0} pt";
         OpacityValueText.Text = $"{OpacitySlider.Value:P0}";
     }
 
@@ -701,12 +848,106 @@ public partial class SettingsWindow : Window
         return HeaderHotkeyButton.Tag as string ?? _settingsService.Current.Triggers.Hotkey;
     }
 
+    private void SetFloatingButtonSizeSelection(string? value)
+    {
+        var normalized = string.IsNullOrWhiteSpace(value) ? "Medium" : value;
+        WpfRadioButton? fallback = null;
+        foreach (var child in FloatingButtonSizeDots.Children)
+        {
+            if (child is not WpfRadioButton radio)
+            {
+                continue;
+            }
+
+            if (string.Equals(radio.Tag as string, "Medium", StringComparison.OrdinalIgnoreCase))
+            {
+                fallback = radio;
+            }
+
+            if (string.Equals(radio.Tag as string, normalized, StringComparison.OrdinalIgnoreCase))
+            {
+                radio.IsChecked = true;
+                return;
+            }
+        }
+
+        if (fallback is not null)
+        {
+            fallback.IsChecked = true;
+        }
+    }
+
+    private string GetFloatingButtonSizeSelection()
+    {
+        foreach (var child in FloatingButtonSizeDots.Children)
+        {
+            if (child is WpfRadioButton { IsChecked: true } radio && radio.Tag is string value)
+            {
+                return value;
+            }
+        }
+
+        return "Medium";
+    }
+
+    private void SetPopupFontSizeSelection(double value)
+    {
+        var target = PopupFontSizeValues[0];
+        foreach (var option in PopupFontSizeValues)
+        {
+            if (Math.Abs(option - value) < Math.Abs(target - value))
+            {
+                target = option;
+            }
+        }
+
+        WpfRadioButton? fallback = null;
+        foreach (var child in PopupFontSizeDots.Children)
+        {
+            if (child is not WpfRadioButton radio)
+            {
+                continue;
+            }
+
+            if (string.Equals(radio.Tag as string, "14", StringComparison.Ordinal))
+            {
+                fallback = radio;
+            }
+
+            if (double.TryParse(radio.Tag as string, out var tagValue) && Math.Abs(tagValue - target) < 0.001)
+            {
+                radio.IsChecked = true;
+                return;
+            }
+        }
+
+        if (fallback is not null)
+        {
+            fallback.IsChecked = true;
+        }
+    }
+
+    private double GetPopupFontSizeSelection()
+    {
+        foreach (var child in PopupFontSizeDots.Children)
+        {
+            if (child is WpfRadioButton { IsChecked: true } radio
+                && double.TryParse(radio.Tag as string, out var value))
+            {
+                return value;
+            }
+        }
+
+        return 14;
+    }
+
     private void ApplyLocalTheme(string theme)
     {
-        var palette = SettingsWindowThemePalettes.For(
-            string.Equals(theme, "System", StringComparison.OrdinalIgnoreCase)
-                ? (ThemeResourceService.ShouldUseDarkTheme(theme) ? "Dark" : "Light")
-                : theme);
+        var effectiveTheme = string.Equals(theme, "System", StringComparison.OrdinalIgnoreCase)
+            ? (ThemeResourceService.ShouldUseDarkTheme(theme) ? "Dark" : "Light")
+            : theme;
+        var palette = SettingsWindowThemePalettes.For(effectiveTheme);
+        var useDarkPreview = string.Equals(effectiveTheme, "Dark", StringComparison.OrdinalIgnoreCase);
 
         SetSolidBrush("Settings.ShellBrush", palette.Shell);
         SetSolidBrush("Settings.TextPrimaryBrush", palette.TextPrimary);
@@ -727,6 +968,10 @@ public partial class SettingsWindow : Window
         SetSolidBrush("Settings.ToggleTrackBrush", palette.ToggleTrack);
         SetSolidBrush("Settings.SliderTrackBrush", palette.SliderTrack);
         SetSolidBrush("Settings.SliderThumbBrush", palette.SliderThumb);
+        SetSolidBrush("Settings.FloatingButtonPreviewOuterBrush", useDarkPreview ? Colors.White : Colors.Black);
+        SetSolidBrush("Settings.FloatingButtonPreviewInnerBrush", useDarkPreview ? Colors.Black : Colors.White);
+        SetSolidBrush("Settings.ScrollBarThumbBrush", palette.ScrollBarThumb);
+        SetSolidBrush("Settings.ScrollBarThumbHoverBrush", palette.ScrollBarThumbHover);
         SetSolidBrush("Settings.AccentBrush", palette.Accent);
         SetSolidBrush("Settings.SuccessBrush", palette.Success);
         SetSolidBrush("Settings.WarningBrush", palette.Warning);

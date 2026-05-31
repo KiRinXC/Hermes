@@ -6,10 +6,12 @@ param(
 $ErrorActionPreference = "Stop"
 . "$PSScriptRoot\Use-HermesEnv.ps1" -UseLocalProxy:$UseLocalProxy -ProxyUrl $ProxyUrl
 
-& $Global:HermesDotnetExe build "$Global:HermesRepoRoot\Hermes.sln" `
+& $Global:HermesDotnetExe build "$Global:HermesRepoRoot\tests\Hermes.Tests\Hermes.Tests.csproj" `
     --configfile "$Global:HermesNuGetConfig" `
     -p:NuGetAudit=false `
-    --artifacts-path "$Global:HermesRepoRoot\artifacts\dotnet-verify" `
+    -p:MSBuildEnableWorkloadResolver=false `
+    -p:BaseIntermediateOutputPath="$Global:HermesBuildIntermediateRoot\" `
+    -p:BaseOutputPath="$Global:HermesBuildOutputRoot\" `
     --tl:off
 
 exit $LASTEXITCODE

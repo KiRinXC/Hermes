@@ -11,6 +11,8 @@ $ErrorActionPreference = "Stop"
     -r win-x64 `
     -p:SelfContained=true `
     -p:NuGetAudit=false `
+    -p:MSBuildEnableWorkloadResolver=false `
+    -p:BaseIntermediateOutputPath="$Global:HermesBuildIntermediateRoot\" `
     --artifacts-path "$Global:HermesRepoRoot\artifacts\dotnet" `
     -v normal `
     --tl:off

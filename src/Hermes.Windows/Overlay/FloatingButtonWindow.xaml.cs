@@ -12,12 +12,16 @@ public partial class FloatingButtonWindow : Window
 {
     private readonly DispatcherTimer _dismissTimer;
 
-    public FloatingButtonWindow(SelectionCandidate candidate, bool useDarkIcon, bool pointToTextAbove)
+    public FloatingButtonWindow(
+        SelectionCandidate candidate,
+        FloatingButtonVisualStyle style,
+        bool pointToTextAbove,
+        FloatingButtonDimensions dimensions)
     {
         InitializeComponent();
         Candidate = candidate;
-        LightIcon.Visibility = useDarkIcon ? Visibility.Collapsed : Visibility.Visible;
-        DarkIcon.Visibility = useDarkIcon ? Visibility.Visible : Visibility.Collapsed;
+        ApplyDimensions(dimensions);
+        ApplyVisualStyle(style);
         IconOrientationTransform.ScaleY = pointToTextAbove ? -1 : 1;
         _dismissTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
         _dismissTimer.Tick += (_, _) => FadeOutAndClose();
@@ -26,6 +30,43 @@ public partial class FloatingButtonWindow : Window
     public SelectionCandidate Candidate { get; }
 
     public event EventHandler<SelectionCandidate>? TranslateRequested;
+
+    public static FloatingButtonDimensions ResolveDimensions(string? value)
+    {
+        return value switch
+        {
+            "ExtraSmall" => new FloatingButtonDimensions(32, 18),
+            "Small" => new FloatingButtonDimensions(38, 22),
+            "Large" => new FloatingButtonDimensions(52, 30),
+            "ExtraLarge" => new FloatingButtonDimensions(60, 36),
+            _ => new FloatingButtonDimensions(44, 25)
+        };
+    }
+
+    private void ApplyDimensions(FloatingButtonDimensions dimensions)
+    {
+        Width = dimensions.HitSize;
+        Height = dimensions.HitSize;
+        RootBorder.Width = dimensions.HitSize;
+        RootBorder.Height = dimensions.HitSize;
+        TranslateButton.Width = dimensions.HitSize;
+        TranslateButton.Height = dimensions.HitSize;
+        IconGrid.Width = dimensions.IconSize;
+        IconGrid.Height = dimensions.IconSize;
+    }
+
+    private void ApplyVisualStyle(FloatingButtonVisualStyle style)
+    {
+        if (style == FloatingButtonVisualStyle.LightBorderDarkFill)
+        {
+            LightIcon.Visibility = Visibility.Collapsed;
+            DarkIcon.Visibility = Visibility.Visible;
+            return;
+        }
+
+        LightIcon.Visibility = Visibility.Visible;
+        DarkIcon.Visibility = Visibility.Collapsed;
+    }
 
     protected override void OnSourceInitialized(EventArgs e)
     {
@@ -111,3 +152,5 @@ public partial class FloatingButtonWindow : Window
         transform.BeginAnimation(ScaleTransform.ScaleYProperty, animation);
     }
 }
+
+public sealed record FloatingButtonDimensions(double HitSize, double IconSize);

@@ -17,11 +17,32 @@ public sealed class AppSettings
 
 public sealed class ApiSettings
 {
-    public string Provider { get; set; } = "OpenAI";
+    // Legacy fields retained for backward compatibility with existing settings.json.
+    public string Provider { get; set; } = "Transmart";
 
-    public string BaseUrl { get; set; } = "https://api.openai.com/v1";
+    public string BaseUrl { get; set; } = Hermes.Windows.Translation.TransmartTranslationService.DefaultBaseUrl;
 
-    public string Model { get; set; } = "gpt-4.1-mini";
+    public string Model { get; set; } = Hermes.Windows.Translation.TransmartTranslationService.DefaultModelCategory;
+
+    public bool UseOpenAiForTranslation { get; set; }
+
+    public TransmartApiSettings Transmart { get; set; } = new();
+
+    public OpenAiApiSettings OpenAi { get; set; } = new();
+}
+
+public sealed class TransmartApiSettings
+{
+    public string BaseUrl { get; set; } = Hermes.Windows.Translation.TransmartTranslationService.DefaultBaseUrl;
+
+    public string Model { get; set; } = Hermes.Windows.Translation.TransmartTranslationService.DefaultModelCategory;
+}
+
+public sealed class OpenAiApiSettings
+{
+    public string BaseUrl { get; set; } = Hermes.Windows.Translation.OpenAiTranslationService.DefaultBaseUrl;
+
+    public string Model { get; set; } = Hermes.Windows.Translation.OpenAiTranslationService.DefaultModel;
 }
 
 public sealed class TranslationSettings
@@ -37,6 +58,8 @@ public sealed class TranslationSettings
     public int MaxCharacters { get; set; } = 5000;
 
     public bool PreserveFormatting { get; set; } = true;
+
+    public string ExplanationPreference { get; set; } = Hermes.Windows.Translation.TranslationPromptBuilder.DefaultExplanationPreference;
 }
 
 public sealed class TriggerSettings
@@ -62,11 +85,21 @@ public sealed class UiSettings
 {
     public string Theme { get; set; } = "System";
 
+    public string FloatingButtonStyle { get; set; } = "DarkBorderLightFill";
+
+    public string FloatingButtonSize { get; set; } = "Medium";
+
     public double PopupWidth { get; set; } = 360;
 
-    public double FontSize { get; set; } = 14;
+    public double PopupHeight { get; set; } = 260;
+
+    public double FontSize { get; set; } = 16;
 
     public double Opacity { get; set; } = 0.98;
+
+    public double SettingsWindowWidth { get; set; } = 800;
+
+    public double SettingsWindowHeight { get; set; } = 600;
 
     public bool PinPopupByDefault { get; set; }
 }

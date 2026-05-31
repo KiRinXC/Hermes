@@ -5,4 +5,6 @@ public sealed record TranslationRequest(
     string Style,
     string TargetLanguage,
     bool PreserveFormatting,
-    string? SystemPrompt = null);
+    string? SystemPrompt = null,
+    TranslationMode Mode = TranslationMode.Translate,
+    string? ExplanationPreference = null);

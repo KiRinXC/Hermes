@@ -1,5 +1,5 @@
 param(
-    [string]$DotnetRoot = "D:\Code\Env\dotnet",
+    [string]$DotnetRoot = "C:\Code\Env\dotnet",
     [switch]$UseLocalProxy,
     [string]$ProxyUrl = "http://127.0.0.1:7890"
 )
@@ -12,9 +12,14 @@ if (-not (Test-Path $dotnetExe)) {
     throw "dotnet.exe was not found at $dotnetExe"
 }
 
-$dotnetHome = Join-Path $repoRoot ".dotnet-home"
-$nugetRoot = Join-Path $repoRoot ".nuget"
-$nugetOffline = Join-Path $nugetRoot "offline"
+$runtimeRoot = Join-Path $env:TEMP "HermesRuntime"
+$dotnetHome = Join-Path $runtimeRoot ".dotnet-home"
+$nugetRoot = Join-Path $runtimeRoot ".nuget"
+$nugetOffline = Join-Path $repoRoot ".nuget\offline"
+$buildRoot = Join-Path $runtimeRoot "build"
+$buildIntermediate = Join-Path $buildRoot "obj"
+$buildRunId = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+$buildOutput = Join-Path $repoRoot "artifacts\dotnet-verify\bin\$buildRunId"
 
 $env:DOTNET_ROOT = $DotnetRoot
 $env:DOTNET_CLI_HOME = $dotnetHome
@@ -33,6 +38,7 @@ if ($UseLocalProxy) {
 }
 
 @(
+    $runtimeRoot,
     $env:APPDATA,
     $env:LOCALAPPDATA,
     $env:DOTNET_CLI_HOME,
@@ -40,7 +46,10 @@ if ($UseLocalProxy) {
     $nugetOffline,
     $env:NUGET_HTTP_CACHE_PATH,
     $env:NUGET_PLUGINS_CACHE_PATH,
-    $env:NUGET_SCRATCH
+    $env:NUGET_SCRATCH,
+    $buildRoot,
+    $buildIntermediate,
+    $buildOutput
 ) | ForEach-Object {
     New-Item -ItemType Directory -Force -Path $_ | Out-Null
 }
@@ -49,6 +58,8 @@ $Global:HermesRepoRoot = $repoRoot
 $Global:HermesDotnetExe = $dotnetExe
 $Global:HermesNuGetConfig = Join-Path $repoRoot "NuGet.Config"
 $Global:HermesNuGetOffline = $nugetOffline
+$Global:HermesBuildIntermediateRoot = $buildIntermediate
+$Global:HermesBuildOutputRoot = $buildOutput
 
 Write-Host "Hermes environment is ready."
 Write-Host "Repo:   $repoRoot"

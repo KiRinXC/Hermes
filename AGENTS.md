@@ -12,6 +12,20 @@
 * README 负责项目入口说明，Design.md 负责实现和决策回顾，两者内容不能长期冲突。
 * 交付前必须检查代码、README、Design.md、AGENTS.md 是否仍描述同一个项目状态。
 
+## 修改后发行要求
+
+每次开发 agent 完成一次代码、文档或配置修改后，交付前必须执行一次发行/打包，让用户能够直接运行并检查实际效果。
+
+发行规则：
+
+* 默认必须运行 `scripts\Publish-Hermes.ps1`，直接覆盖 `artifacts\publish\Hermes.Windows\manual-test\win-x64-self-contained\`，让用户打开该目录即可试用最新效果。
+* 发布产物必须是 `win-x64 self-contained`，随包携带 .NET runtime；不能要求客户额外下载安装 .NET。
+* 如需额外生成对外分发 zip，可在覆盖 self-contained 目录后再运行 `scripts\Package-HermesRelease.ps1`。
+* 发行前必须先完成与修改范围匹配的测试或构建验证。
+* 如果 `Hermes.Windows` 正在运行并锁定发布目录，应提示用户退出应用后再发行，不能静默跳过。
+* 如果发行因缺少 runtime pack、网络、权限、文件锁等环境问题失败，必须在最终回复中说明失败原因、已完成的验证、当前产物状态和下一步需要的用户动作。
+* 只有用户明确要求跳过发行时，才可以不执行发行；最终回复必须说明是按用户要求跳过。
+
 ---
 
 下面是一份可以直接交给开发 agent 的需求细化稿。我会把它定义为 **Windows 系统级 AI 翻译助手**，而不是传统意义上的“浏览器插件”。因为你的目标是“任何应用中选中文本即可翻译”，这在 Windows 上本质是一个常驻桌面应用：监听选区、显示悬浮按钮、调用 AI API、展示结果。

@@ -15,6 +15,8 @@ $output = Join-Path $Global:HermesRepoRoot "artifacts\publish\Hermes.Windows\man
     --self-contained true `
     -p:PublishSingleFile=false `
     -p:NuGetAudit=false `
+    -p:MSBuildEnableWorkloadResolver=false `
+    -p:BaseIntermediateOutputPath="$Global:HermesBuildIntermediateRoot\" `
     --artifacts-path "$Global:HermesRepoRoot\artifacts\dotnet" `
     -o "$output" `
     --tl:off

@@ -10,11 +10,14 @@ using Hermes.Windows.Shell;
 using Hermes.Windows.Translation;
 using Hermes.Windows.Tray;
 using Hermes.Windows.UI.Themes;
+using System.Windows.Threading;
 
 namespace Hermes.Windows;
 
 public partial class App : System.Windows.Application
 {
+    internal static readonly TimeSpan StartupTriggerDelay = TimeSpan.FromMilliseconds(250);
+
     private SingleInstanceGuard? _singleInstanceGuard;
     private AppLogger? _logger;
     private SettingsService? _settingsService;
@@ -78,7 +81,7 @@ public partial class App : System.Windows.Application
         AppIdentityService.EnsureRegistered(_logger);
         ThemeResourceService.Apply(_settingsService.Current.Ui.Theme);
         _secretStorage = new DpapiSecretStorageService(_logger);
-        _startupRegistrationService = new StartupRegistrationService();
+        _startupRegistrationService = new StartupRegistrationService(_logger);
         _startupRegistrationService.SetLaunchAtSignIn(_settingsService.Current.Startup.LaunchAtSignIn);
 
         var foregroundWindowService = new ForegroundWindowService(_settingsService);
@@ -97,7 +100,9 @@ public partial class App : System.Windows.Application
             _settingsService);
 
         _historyService = new TranslationHistoryService(_settingsService, _logger);
-        _translationService = new OpenAiTranslationService(new HttpClient(), _settingsService, _secretStorage, _logger);
+        var openAiService = new OpenAiTranslationService(new HttpClient(), _settingsService, _secretStorage, _logger);
+        var transmartService = new TransmartTranslationService(new HttpClient(), _settingsService, _logger);
+        _translationService = new ProviderRoutingTranslationService(openAiService, transmartService, _settingsService);
         _overlayManager = new OverlayManager(new OverlayPositionService(), _settingsService);
         _translationCoordinator = new TranslationCoordinator(
             selectionOrchestrator,
@@ -144,6 +149,7 @@ public partial class App : System.Windows.Application
                         point.Y,
                         point.StartedAt,
                         point.ReleasedAt,
+                        point.Mode,
                         point.CtrlDownAtStart,
                         point.CtrlHeldDuringDrag,
                         point.CtrlDownAtRelease);
@@ -182,8 +188,25 @@ public partial class App : System.Windows.Application
             }
         };
 
-        ResumeTriggers();
         _trayService.ShowBalloon("Hermes", "已在后台运行。选中文本后按 Ctrl+Alt+E 可翻译。");
+        ScheduleResumeTriggersAfterStartup();
+    }
+
+    private void ScheduleResumeTriggersAfterStartup()
+    {
+        var timer = new DispatcherTimer(DispatcherPriority.ApplicationIdle, Dispatcher)
+        {
+            Interval = StartupTriggerDelay
+        };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            if (!_paused)
+            {
+                ResumeTriggers();
+            }
+        };
+        timer.Start();
     }
 
     private void TogglePaused()
@@ -250,11 +273,31 @@ public partial class App : System.Windows.Application
                 _triggerDiagnosticsService,
                 _logger);
             _settingsWindow.Closed += (_, _) => _settingsWindow = null;
+        }
+
+        BringSettingsWindowToFront();
+    }
+
+    private void BringSettingsWindowToFront()
+    {
+        if (_settingsWindow is null)
+        {
+            return;
+        }
+
+        if (_settingsWindow.WindowState == WindowState.Minimized)
+        {
+            _settingsWindow.WindowState = WindowState.Normal;
+        }
+
+        if (!_settingsWindow.IsVisible)
+        {
             _settingsWindow.Show();
         }
-        else
-        {
-            _settingsWindow.Activate();
-        }
+
+        _settingsWindow.Topmost = true;
+        _settingsWindow.Activate();
+        _settingsWindow.Focus();
+        _settingsWindow.Topmost = false;
     }
 }
