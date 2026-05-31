@@ -242,14 +242,14 @@ powershell -ExecutionPolicy Bypass -File scripts\Publish-Hermes.ps1
 对外 GitHub Release 采用 zip 包分发，脚本会先生成固定 self-contained portable 目录，再压缩为版本化 zip 并生成 SHA256 校验文件：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\Package-HermesRelease.ps1 -Version 0.1.0
+powershell -ExecutionPolicy Bypass -File scripts\Package-HermesRelease.ps1 -Version 0.2.0
 ```
 
 输出目录：
 
 ```text
-artifacts\release\v0.1.0\
-├─ Hermes-v0.1.0-win-x64-portable.zip
+artifacts\release\v0.2.0\
+├─ Hermes-v0.2.0-win-x64-portable.zip
 └─ checksums.txt
 ```
 
@@ -377,6 +377,7 @@ Hermes 的用户数据保存在：
 | 2026-05-31 | 调整浮窗字号档位为 `12 / 14 / 16 / 18 / 20`，默认字号改为 `16`，并将弹窗字号上限同步放宽到 `20`。 | Settings / Shell / Overlay / Tests |
 | 2026-05-31 | 修正外观页图标大小和浮窗字号端点预览的居中方式：两行左右端点预览都固定在 34px 槽位中心，图标 Viewbox 与 `A` 字样不再分别左/右贴边。 | Shell / Tests |
 | 2026-05-31 | 将外观页浮窗字号端点预览从 `TextBlock` 字母改为固定 24x24 画布的描边矢量 `A` 图标，消除字体基线导致的视觉错位，并让变化在界面上可见。 | Shell / Tests |
+| 2026-05-31 | 新增 `docs\release-notes\v0.2.0.md`，并将 README 与打包策略中的对外发布示例更新为 v0.2.0。 | 文档维护 / 打包发布 |
 
 ### 2026-05-29 Transmart Verification Notes
 
