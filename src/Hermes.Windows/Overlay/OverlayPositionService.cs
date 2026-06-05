@@ -1,5 +1,4 @@
 ﻿using System.Drawing;
-using System.Windows.Forms;
 using Hermes.Windows.Infrastructure;
 using Hermes.Windows.Selection;
 
@@ -14,9 +13,12 @@ public sealed class OverlayPositionService
         int fallbackX,
         int fallbackY)
     {
-        if (bounds is { IsEmpty: false })
+        if (bounds is { IsEmpty: false } && IsNearFallbackPoint(bounds.Value, fallbackX, fallbackY))
         {
-            return Clamp(bounds.Value.Right - width, bounds.Value.Top - height - 8, width, height, PointFromBounds(bounds.Value));
+            var monitorPoint = PointFromBounds(bounds.Value);
+            var size = DpiAwareScreen.ToPhysicalSize(width, height, monitorPoint);
+            var scale = DpiAwareScreen.GetScaleForPhysicalPoint(monitorPoint);
+            return Clamp(bounds.Value.Right - size.Width, bounds.Value.Top - size.Height - (8 * scale.ScaleY), width, height, monitorPoint);
         }
 
         return PositionNearPoint(fallbackX, fallbackY, width, height);
@@ -24,7 +26,9 @@ public sealed class OverlayPositionService
 
     public (double Left, double Top) PositionNearPoint(int x, int y, double width, double height)
     {
-        return Clamp(x + 16, y + 18, width, height, new Point(x, y));
+        var monitorPoint = new Point(x, y);
+        var scale = DpiAwareScreen.GetScaleForPhysicalPoint(monitorPoint);
+        return Clamp(x + (16 * scale.ScaleX), y + (18 * scale.ScaleY), width, height, monitorPoint);
     }
 
     public (double Left, double Top) PositionAtCursor(double width, double height)
@@ -36,14 +40,20 @@ public sealed class OverlayPositionService
 
     public (double Left, double Top) Clamp(double left, double top, double width, double height, Point monitorPoint)
     {
-        var area = Screen.FromPoint(monitorPoint).WorkingArea;
-        var clampedLeft = Math.Min(Math.Max(left, area.Left + 8), area.Right - width - 8);
-        var clampedTop = Math.Min(Math.Max(top, area.Top + 8), area.Bottom - height - 8);
-        return (clampedLeft, clampedTop);
+        return DpiAwareScreen.ClampPhysical(left, top, width, height, monitorPoint);
     }
 
     private static Point PointFromBounds(ScreenBounds bounds)
     {
         return new Point((int)Math.Round(bounds.Left), (int)Math.Round(bounds.Top));
+    }
+
+    private static bool IsNearFallbackPoint(ScreenBounds bounds, int fallbackX, int fallbackY)
+    {
+        var padding = Math.Max(240, Math.Max(bounds.Width, bounds.Height) * 0.75);
+        return fallbackX >= bounds.Left - padding
+            && fallbackX <= bounds.Right + padding
+            && fallbackY >= bounds.Top - padding
+            && fallbackY <= bounds.Bottom + padding;
     }
 }

@@ -4,6 +4,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using Hermes.Windows.Infrastructure;
+using Hermes.Windows.Overlay;
 using Forms = System.Windows.Forms;
 
 namespace Hermes.Windows.Tray;
@@ -87,12 +88,13 @@ public partial class TrayMenuWindow : Window
     private void PositionNearCursor()
     {
         var cursor = Forms.Cursor.Position;
-        var area = Forms.Screen.FromPoint(cursor).WorkingArea;
-        var left = cursor.X - ActualWidth + 8;
-        var top = cursor.Y - ActualHeight - 8;
+        var scale = DpiAwareScreen.GetScaleForPhysicalPoint(cursor);
+        var size = DpiAwareScreen.ToPhysicalSize(ActualWidth, ActualHeight, cursor);
+        var left = cursor.X - size.Width + (8 * scale.ScaleX);
+        var top = cursor.Y - size.Height - (8 * scale.ScaleY);
+        var position = DpiAwareScreen.ClampPhysical(left, top, ActualWidth, ActualHeight, cursor);
 
-        Left = Math.Min(Math.Max(left, area.Left + 8), area.Right - ActualWidth - 8);
-        Top = Math.Min(Math.Max(top, area.Top + 8), area.Bottom - ActualHeight - 8);
+        DpiAwareScreen.SetWindowPositionPhysical(this, position.Left, position.Top);
     }
 
     private void AnimateIn()

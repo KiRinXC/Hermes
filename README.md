@@ -31,7 +31,7 @@ Hermes 是一个 Windows 全局 AI 划词翻译助手。选中英文内容后，
 正式对外发布时，请在 GitHub Releases 中下载：
 
 ```text
-Hermes-v0.2.0-win-x64-portable.zip
+Hermes-v0.2.1-win-x64-portable.zip
 ```
 
 解压后运行：
@@ -108,27 +108,27 @@ powershell -ExecutionPolicy Bypass -File scripts\Publish-Hermes.ps1
 生成 GitHub Release portable zip：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\Package-HermesRelease.ps1 -Version 0.2.0
+powershell -ExecutionPolicy Bypass -File scripts\Package-HermesRelease.ps1 -Version 0.2.1
 ```
 
 输出位置：
 
 ```text
-artifacts\release\v0.2.0\
+artifacts\release\v0.2.1\
 ```
 
 其中包含：
 
-- `Hermes-v0.2.0-win-x64-portable.zip`
+- `Hermes-v0.2.1-win-x64-portable.zip`
 - `checksums.txt`
 
 ## GitHub Release 流程
 
 1. 运行测试：`scripts\Test-Hermes.ps1`
-2. 生成 zip：`scripts\Package-HermesRelease.ps1 -Version 0.2.0`
-3. 创建 tag：`v0.2.0`
+2. 生成 zip：`scripts\Package-HermesRelease.ps1 -Version 0.2.1`
+3. 创建 tag：`v0.2.1`
 4. 在 GitHub Releases 上传 zip 和 `checksums.txt`
-5. 把 `docs/release-notes/v0.2.0.md` 的内容作为 Release Notes
+5. 把 `docs/release-notes/v0.2.1.md` 的内容作为 Release Notes
 
 > 目前 Hermes 还没有代码签名证书。Windows SmartScreen 可能会提示未知发布者，这是独立 Windows 应用早期发布时常见的情况。
 

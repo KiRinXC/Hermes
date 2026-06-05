@@ -6,6 +6,7 @@ using System.Windows.Media.Animation;
 using System.Windows.Input;
 using System.Windows.Threading;
 using Hermes.Windows.Infrastructure;
+using Hermes.Windows.Overlay;
 using Forms = System.Windows.Forms;
 
 namespace Hermes.Windows.Tray;
@@ -75,8 +76,13 @@ public partial class TrayNotificationWindow : Window
         }
 
         var area = screen.WorkingArea;
-        Left = area.Right - ActualWidth - 18;
-        Top = area.Bottom - ActualHeight - 18;
+        var anchor = new System.Drawing.Point(area.Right - 1, area.Bottom - 1);
+        var scale = DpiAwareScreen.GetScaleForPhysicalPoint(anchor);
+        var size = DpiAwareScreen.ToPhysicalSize(ActualWidth, ActualHeight, anchor);
+        DpiAwareScreen.SetWindowPositionPhysical(
+            this,
+            area.Right - size.Width - (18 * scale.ScaleX),
+            area.Bottom - size.Height - (18 * scale.ScaleY));
     }
 
     private void AnimateIn()

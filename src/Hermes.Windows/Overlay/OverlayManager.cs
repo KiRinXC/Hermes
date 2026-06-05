@@ -36,13 +36,13 @@ public sealed class OverlayManager
         var dimensions = FloatingButtonWindow.ResolveDimensions(_settingsService.Current.Ui.FloatingButtonSize);
         var buttonSize = dimensions.HitSize;
         var position = _positionService.PositionNearSelection(candidate.Bounds, buttonSize, buttonSize, candidate.ReleaseX, candidate.ReleaseY);
-        var pointToTextAbove = ShouldPointToTextAbove(candidate, position.Top, buttonSize);
+        var physicalButtonSize = DpiAwareScreen.ToPhysicalSize(buttonSize, buttonSize, new System.Drawing.Point(candidate.ReleaseX, candidate.ReleaseY));
+        var pointToTextAbove = ShouldPointToTextAbove(candidate, position.Top, physicalButtonSize.Height);
         var style = ResolveFloatingButtonVisualStyle(_settingsService.Current.Ui.FloatingButtonStyle);
         _floatingButton = new FloatingButtonWindow(candidate, style, pointToTextAbove, dimensions);
         _floatingButton.TranslateRequested += (_, result) => FloatingButtonTranslateRequested?.Invoke(this, result);
-        _floatingButton.Left = position.Left;
-        _floatingButton.Top = position.Top;
         _floatingButton.Show();
+        DpiAwareScreen.SetWindowPositionPhysical(_floatingButton, position.Left, position.Top);
     }
 
     public bool ContainsOverlayPoint(int x, int y)
@@ -75,9 +75,8 @@ public sealed class OverlayManager
         var position = selection.Bounds is { } bounds
             ? _positionService.PositionNearSelection(bounds, popup.Width, popup.Height, (int)bounds.Left, (int)bounds.Top)
             : _positionService.PositionAtCursor(popup.Width, popup.Height);
-        popup.Left = position.Left;
-        popup.Top = position.Top;
         popup.Show();
+        DpiAwareScreen.SetWindowPositionPhysical(popup, position.Left, position.Top);
         return popup;
     }
 
@@ -96,9 +95,8 @@ public sealed class OverlayManager
             popup.Height,
             candidate.ReleaseX,
             candidate.ReleaseY);
-        popup.Left = position.Left;
-        popup.Top = position.Top;
         popup.Show();
+        DpiAwareScreen.SetWindowPositionPhysical(popup, position.Left, position.Top);
         return popup;
     }
 
@@ -262,12 +260,7 @@ public sealed class OverlayManager
             return false;
         }
 
-        var width = window.ActualWidth > 0 ? window.ActualWidth : window.Width;
-        var height = window.ActualHeight > 0 ? window.ActualHeight : window.Height;
-        return x >= window.Left
-            && x <= window.Left + width
-            && y >= window.Top
-            && y <= window.Top + height;
+        return DpiAwareScreen.ContainsPhysicalPoint(window, x, y);
     }
 }
 

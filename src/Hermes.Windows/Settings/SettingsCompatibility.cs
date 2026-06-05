@@ -66,6 +66,9 @@ public static class SettingsCompatibility
             api.OpenAi.Model = api.Model;
         }
 
-        api.UseOpenAiForTranslation = true;
+        api.Provider = "Transmart";
+        api.BaseUrl = TransmartTranslationService.DefaultBaseUrl;
+        api.Model = TransmartTranslationService.DefaultModelCategory;
+        api.UseOpenAiForTranslation = false;
     }
 }

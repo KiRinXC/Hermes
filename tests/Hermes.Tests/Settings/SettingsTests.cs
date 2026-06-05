@@ -9,7 +9,7 @@ public static class SettingsTests
     {
         suite.Add("settings defaults", SettingsDefaults);
         suite.Add("settings compatibility initializes nested API blocks", CompatibilityInitializesNestedApiBlocks);
-        suite.Add("settings compatibility migrates legacy openai provider", CompatibilityMigratesLegacyOpenAiProvider);
+        suite.Add("settings compatibility preserves legacy openai details without enabling translation", CompatibilityPreservesLegacyOpenAiDetailsWithoutEnablingTranslation);
         suite.Add("settings compatibility keeps transmart translation by default", CompatibilityKeepsTransmartTranslationDefault);
         suite.Add("settings compatibility does not force openai when migration is skipped", CompatibilitySkipsLegacyProviderMigrationWhenRequested);
     }
@@ -51,7 +51,7 @@ public static class SettingsTests
         TestAssert.Equal(OpenAiTranslationService.DefaultModel, settings.Api.OpenAi.Model);
     }
 
-    private static void CompatibilityMigratesLegacyOpenAiProvider()
+    private static void CompatibilityPreservesLegacyOpenAiDetailsWithoutEnablingTranslation()
     {
         var settings = new AppSettings
         {
@@ -68,7 +68,10 @@ public static class SettingsTests
 
         SettingsCompatibility.Normalize(settings);
 
-        TestAssert.True(settings.Api.UseOpenAiForTranslation);
+        TestAssert.False(settings.Api.UseOpenAiForTranslation);
+        TestAssert.Equal("Transmart", settings.Api.Provider);
+        TestAssert.Equal(TransmartTranslationService.DefaultBaseUrl, settings.Api.BaseUrl);
+        TestAssert.Equal(TransmartTranslationService.DefaultModelCategory, settings.Api.Model);
         TestAssert.Equal("https://api.example.com/v1", settings.Api.OpenAi.BaseUrl);
         TestAssert.Equal("gpt-custom", settings.Api.OpenAi.Model);
     }

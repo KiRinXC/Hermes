@@ -102,7 +102,7 @@ public partial class TranslationPopupWindow : Window
         BodyText.LineHeight = appliedFontSize * 1.58;
         SourcePreviewText.FontSize = appliedFontSize;
         SourcePreviewText.LineHeight = appliedFontSize * 1.45;
-        var screen = Forms.Screen.FromPoint(Forms.Cursor.Position).WorkingArea;
+        var screen = DpiAwareScreen.GetWorkingAreaDip(Forms.Cursor.Position);
         MaxHeight = Math.Min(720, screen.Height * 0.86);
         UpdateBodyScrollHeight();
     }
@@ -341,9 +341,7 @@ public partial class TranslationPopupWindow : Window
         try
         {
             _clamping = true;
-            var screen = Forms.Screen.FromPoint(new System.Drawing.Point((int)Left, (int)Top)).WorkingArea;
-            Left = Math.Min(Math.Max(Left, screen.Left + 8), screen.Right - ActualWidth - 8);
-            Top = Math.Min(Math.Max(Top, screen.Top + 8), screen.Bottom - ActualHeight - 8);
+            DpiAwareScreen.ClampWindowToScreen(this);
         }
         finally
         {
