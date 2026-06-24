@@ -88,7 +88,7 @@ OverlayManager 显示翻译卡片并逐段追加译文
 ### 鼠标划词悬浮按钮
 
 ```text
-用户按住 Ctrl 或 Alt 拖选文本
+用户先按住 Ctrl 或 Alt，再拖选文本
   ↓
 MouseHookService 捕捉选择手势完成
   ↓
@@ -105,7 +105,7 @@ TranslationCoordinator
 TranslationPopupWindow 显示结果
 ```
 
-被动鼠标路径不执行剪贴板复制，且普通拖选不会进入候选判断或触发诊断记录；只有从按下到释放都保持 Ctrl 或 Alt 的拖选才会继续评估悬浮按钮。鼠标释放后只做短暂选区稳定等待，随后候选评估阶段会对敏感控件 UI Automation 检查使用短时间盒，并用更短时间盒预读取选区；如果快速读到文本，则校验并缓存到候选对象，点击按钮后直接使用预读文本；如果 UI Automation 没有暴露选区或预读超时，则仍按手势置信度显示按钮，等用户点击后再走显式触发路径（UI Automation + 受控剪贴板兜底）读取文本。若 UI Automation 明确读到文本但文本不满足校验，则不显示按钮。这样既避免被动路径污染剪贴板，也防止 Zotero、PDF、Electron 或自绘控件等 UI Automation 覆盖较弱的应用拖慢悬浮按钮显示。
+被动鼠标路径不执行剪贴板复制，且普通拖选不会进入候选判断或触发诊断记录；只有在鼠标按下前已经按住 Ctrl 或 Alt 的拖选才会继续评估悬浮按钮，鼠标和键盘的松开顺序不影响结果。实现上以低级鼠标消息的按下时间为准，回看低级键盘 hook 记录的 Ctrl/Alt 按下-释放区间，而不是用鼠标释放瞬间的键盘状态重新判定触发。鼠标释放后只做短暂选区稳定等待，随后候选评估阶段会对敏感控件 UI Automation 检查使用短时间盒，并用更短时间盒预读取选区；如果快速读到文本，则校验并缓存到候选对象，点击按钮后直接使用预读文本；如果 UI Automation 没有暴露选区或预读超时，则仍按手势置信度显示按钮，等用户点击后再走显式触发路径（UI Automation + 受控剪贴板兜底）读取文本。若 UI Automation 明确读到文本但文本不满足校验，则不显示按钮。这样既避免被动路径污染剪贴板，也防止 Zotero、PDF、Electron 或自绘控件等 UI Automation 覆盖较弱的应用拖慢悬浮按钮显示。
 
 ### 剪贴板翻译
 
@@ -141,7 +141,7 @@ ClipboardSelectionProvider 读取当前剪贴板文本
 
 ### Input
 
-`HotkeyService` 负责注册全局快捷键。`KeyboardHookService` 和 `MouseHookService` 负责低级输入监听，用于关闭被动 UI、捕捉 Esc、识别鼠标选择手势。启动阶段会等通知窗口显示后再注册触发器，避免低级 hook 在 UI 线程初始化繁忙时影响鼠标流畅度。Hook 内不做重计算，只转发事件给协调层。
+`HotkeyService` 负责注册全局快捷键。`KeyboardHookService` 和 `MouseHookService` 负责低级输入监听，用于关闭被动 UI、捕捉 Esc、识别鼠标选择手势。`KeyboardHookService` 会缓存 Ctrl/Alt 的按下与释放状态及低级 hook 消息时间，供鼠标起手判定读取，避免只靠瞬时 `GetAsyncKeyState` 采样导致拖选起手丢键；单独按下或松开 Ctrl/Alt 不再作为关闭被动 UI 的用户活动。启动阶段会等通知窗口显示后再注册触发器，避免低级 hook 在 UI 线程初始化繁忙时影响鼠标流畅度。Hook 内不做重计算，只转发事件给协调层。
 
 ### Selection
 
@@ -157,7 +157,7 @@ ClipboardSelectionProvider 读取当前剪贴板文本
 
 悬浮层模块负责按钮、翻译卡片和位置计算。
 
-- `FloatingButtonWindow` 显示按住 Ctrl/Alt 划词后的轻量触发按钮。
+- `FloatingButtonWindow` 显示在按住 Ctrl/Alt 后开始拖选的轻量触发按钮。
 - `FloatingButtonWindow` 的浅色/深色图标内容同步自 `src/Hermes.Windows/Resources/Icons/FloatingButtonLight.svg` 和 `FloatingButtonDark.svg`，不再额外叠加实底边框；仓库根目录不再保留同名副本图标。按钮尺寸由 `UiSettings.FloatingButtonSize` 控制，五档分别映射命中区和图标层大小：超小 32/18、小 38/22、中 44/25、大 52/30、超大 60/36，点击热区会随图标尺寸一起缩放。
 - `FloatingButtonWindow` 支持手动高对比图标样式：`DarkBorderLightFill`（黑框白底图标）和 `LightBorderDarkFill`（白框黑底图标），并通过设置页外观项持久化，避免深色网页与浅色主题叠加时按钮不可辨。
 - `TranslationPopupWindow` 显示加载、流式译文、长耗时、成功、错误、复制、重试、固定和关闭状态；加载标题会显示实际运行通道（`Tencent` 或 OpenAI 模型名），并在流式 delta 与长耗时状态中继续保留该通道文案。成功完成且未固定时，鼠标点击浮窗外部会关闭卡片。翻译卡片同样保持无边框外观，并通过 `WM_NCHITTEST` 支持边缘和四角原生缩放；用户调整后的宽高会自动保存为下一张卡片默认尺寸。卡片正文滚动条使用与设置窗口一致的细轨道/圆角滑块样式，并通过 `Brush.ScrollThumb` / `Brush.ScrollThumbHover` 随浅色、深色主题切换颜色。
@@ -202,7 +202,7 @@ ClipboardSelectionProvider 读取当前剪贴板文本
 
 ### Tests
 
-`tests/Hermes.Tests` 是轻量控制台测试套件，覆盖设置、脱敏、选区校验、选择候选、UI Automation 预读失败/超时手势兜底、被动路径敏感控件检查时间盒、快捷键解析、鼠标 Ctrl/Alt 触发门控、启动触发器延迟注册、启动通知点击设置、设置窗口选项文案和值映射、设置/弹窗边缘缩放与尺寸持久化约束、外观页悬浮按钮五点尺寸选择器对齐与主题预览、外观页浮窗字号五点选择器、设置/弹窗滚动条主题样式、通知点击后的设置窗抬前逻辑、历史/诊断清理、OpenAI 与 Transmart 响应解析、加载态通道显示、悬浮按钮清晰度和去重约束、翻译卡片拖拽/外部点击关闭入口、多卡片事件隔离约束、弹窗 Markdown 渲染回归和 UI 字重约束等逻辑。WPF 可视交互仍需要真实应用试用补充验证。
+`tests/Hermes.Tests` 是轻量控制台测试套件，覆盖设置、脱敏、选区校验、选择候选、UI Automation 预读失败/超时手势兜底、被动路径敏感控件检查时间盒、快捷键解析、鼠标 Ctrl/Alt 起手触发门控、启动触发器延迟注册、启动通知点击设置、设置窗口选项文案和值映射、设置/弹窗边缘缩放与尺寸持久化约束、外观页悬浮按钮五点尺寸选择器对齐与主题预览、外观页浮窗字号五点选择器、设置/弹窗滚动条主题样式、通知点击后的设置窗抬前逻辑、历史/诊断清理、OpenAI 与 Transmart 响应解析、加载态通道显示、悬浮按钮清晰度和去重约束、翻译卡片拖拽/外部点击关闭入口、多卡片事件隔离约束、弹窗 Markdown 渲染回归和 UI 字重约束等逻辑。WPF 可视交互仍需要真实应用试用补充验证。
 
 ## 打包策略
 
@@ -242,14 +242,14 @@ powershell -ExecutionPolicy Bypass -File scripts\Publish-Hermes.ps1
 对外 GitHub Release 采用 zip 包分发，脚本会先生成固定 self-contained portable 目录，再压缩为版本化 zip 并生成 SHA256 校验文件：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\Package-HermesRelease.ps1 -Version 0.2.1
+powershell -ExecutionPolicy Bypass -File scripts\Package-HermesRelease.ps1 -Version 0.2.2
 ```
 
 输出目录：
 
 ```text
-artifacts\release\v0.2.1\
-├─ Hermes-v0.2.1-win-x64-portable.zip
+artifacts\release\v0.2.2\
+├─ Hermes-v0.2.2-win-x64-portable.zip
 └─ checksums.txt
 ```
 
@@ -376,9 +376,13 @@ Hermes 的用户数据保存在：
 | 2026-05-31 | 修复外观页五点控件对齐：图标大小与浮窗字号轨道统一列宽和中段边距；图标预览去掉圆形实底/边框并随浅色/深色主题切换 light/dark 真实悬浮按钮图标；翻译加载态在流式输出和长耗时状态中持续显示 `Tencent` 或 OpenAI 模型名；被动划词候选增加取消与遗留按钮清理，避免同一次划词后出现重复悬浮按钮。 | Shell / Overlay / Translation / Tests / Docs |
 | 2026-05-31 | 调整浮窗字号档位为 `12 / 14 / 16 / 18 / 20`，默认字号改为 `16`，并将弹窗字号上限同步放宽到 `20`。 | Settings / Shell / Overlay / Tests |
 | 2026-05-31 | 修正外观页图标大小和浮窗字号端点预览的居中方式：两行左右端点预览都固定在 34px 槽位中心，图标 Viewbox 与 `A` 字样不再分别左/右贴边。 | Shell / Tests |
+| 2026-06-24 | 修正被动划词触发门槛：只有在鼠标按下前已经按住 Ctrl 或 Alt 的拖选才会进入候选评估；鼠标和键盘的松开顺序不再要求同时，避免拖选中途才按下修饰键也触发按钮。 | Input / Selection / Translation / Tests / Docs |
+| 2026-06-24 | 强化键盘修饰键采样：`KeyboardHookService` 在低级 hook 中缓存 Ctrl/Alt 的按下与释放状态，鼠标手势不再只依赖 `GetAsyncKeyState` 的瞬时采样，降低起手时机丢失导致的“完全无法触发”。 | Input / Tests / Docs |
+| 2026-06-24 | 修复 Ctrl/Alt 划词仍依赖同步松开的问题：键盘 hook 记录低级消息时间，鼠标手势按左键按下时刻回看修饰键按下-释放区间；Ctrl/Alt 单独按下或松开也不再关闭刚出现的被动按钮。 | Input / Tests / Docs |
 | 2026-05-31 | 将外观页浮窗字号端点预览从 `TextBlock` 字母改为固定 24x24 画布的描边矢量 `A` 图标，消除字体基线导致的视觉错位，并让变化在界面上可见。 | Shell / Tests |
 | 2026-05-31 | 新增 `docs\release-notes\v0.2.0.md`，并将 README 与打包策略中的对外发布示例更新为 v0.2.0。 | 文档维护 / 打包发布 |
 | 2026-06-05 | 新增 `docs\release-notes\v0.2.1.md`，并将 README 与打包策略中的对外发布示例更新为 v0.2.1；本次小更新修复高 DPI / 200% 缩放下悬浮按钮、翻译卡片、托盘通知和托盘菜单的物理坐标定位，并强化默认翻译走 Tencent Transmart、不自动启用 OpenAI 翻译。 | Overlay / Tray / Settings / 文档维护 / 打包发布 |
+| 2026-06-24 | 新增 `docs\release-notes\v0.2.2.md`，并将 README、打包脚本默认版本与打包策略中的对外发布示例更新为 v0.2.2；本次发布聚焦 Ctrl/Alt 划词触发修复，保证先按住修饰键再拖选后无论松开顺序如何都能显示悬浮按钮。 | Input / Selection / Translation / 文档维护 / 打包发布 |
 
 ### 2026-05-29 Transmart Verification Notes
 

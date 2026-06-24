@@ -10,9 +10,10 @@ public static class SelectionCandidateServiceTests
     public static void Register(TestSuite suite)
     {
         suite.Add("accepts high confidence selection candidate", AcceptsHighConfidenceCandidate);
+        suite.Add("accepts selection candidate when modifier was released before mouse up", AcceptsModifierReleasedBeforeMouseUpCandidate);
         suite.Add("rejects low distance selection candidate", RejectsLowDistanceCandidate);
         suite.Add("rejects no ctrl selection candidate", RejectsNoCtrlSelectionCandidate);
-        suite.Add("rejects released ctrl selection candidate", RejectsReleasedCtrlSelectionCandidate);
+        suite.Add("rejects modifier pressed after drag starts selection candidate", RejectsModifierPressedAfterDragStartsCandidate);
         suite.Add("ignores no ctrl candidate before evaluation", IgnoresNoCtrlCandidateBeforeEvaluation);
         suite.Add("rejects excluded app selection candidate", RejectsExcludedAppSelectionCandidate);
         suite.Add("rejects disabled automatic selection", RejectsDisabledAutomaticSelection);
@@ -48,6 +49,17 @@ public static class SelectionCandidateServiceTests
         TestAssert.False(decision.ShouldShow);
     }
 
+    private static void AcceptsModifierReleasedBeforeMouseUpCandidate()
+    {
+        var now = DateTimeOffset.Now;
+        var decision = SelectionCandidateService.EvaluateGesture(
+            new SelectionCandidateInput(10, 10, 180, 18, now, now.AddMilliseconds(320), null, TranslationMode.Translate, true, false, false),
+            new AppSettings(),
+            isExcluded: false,
+            isSensitive: false);
+        TestAssert.True(decision.ShouldShow);
+    }
+
     private static void RejectsNoCtrlSelectionCandidate()
     {
         var now = DateTimeOffset.Now;
@@ -60,11 +72,11 @@ public static class SelectionCandidateServiceTests
         TestAssert.Equal("modifier-not-held", decision.Reason);
     }
 
-    private static void RejectsReleasedCtrlSelectionCandidate()
+    private static void RejectsModifierPressedAfterDragStartsCandidate()
     {
         var now = DateTimeOffset.Now;
         var decision = SelectionCandidateService.EvaluateGesture(
-            new SelectionCandidateInput(10, 10, 180, 18, now, now.AddMilliseconds(320), null, TranslationMode.Translate, true, false, false),
+            new SelectionCandidateInput(10, 10, 180, 18, now, now.AddMilliseconds(320), null, TranslationMode.Translate, false, true, true),
             new AppSettings(),
             isExcluded: false,
             isSensitive: false);
@@ -78,14 +90,14 @@ public static class SelectionCandidateServiceTests
             ctrlDownAtStart: false,
             ctrlHeldDuringDrag: false,
             ctrlDownAtRelease: false));
-        TestAssert.True(SelectionCandidateService.ShouldIgnoreBeforeEvaluation(
-            ctrlDownAtStart: true,
-            ctrlHeldDuringDrag: true,
-            ctrlDownAtRelease: false));
         TestAssert.False(SelectionCandidateService.ShouldIgnoreBeforeEvaluation(
             ctrlDownAtStart: true,
+            ctrlHeldDuringDrag: false,
+            ctrlDownAtRelease: false));
+        TestAssert.True(SelectionCandidateService.ShouldIgnoreBeforeEvaluation(
+            ctrlDownAtStart: false,
             ctrlHeldDuringDrag: true,
-            ctrlDownAtRelease: true));
+            ctrlDownAtRelease: false));
     }
 
     private static void RejectsExcludedAppSelectionCandidate()

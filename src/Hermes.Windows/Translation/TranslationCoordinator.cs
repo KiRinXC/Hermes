@@ -171,7 +171,7 @@ public sealed class TranslationCoordinator
 
     internal static bool ShouldIgnorePassiveMouseGesture(bool ctrlDownAtStart, bool ctrlHeldDuringDrag, bool ctrlDownAtRelease)
     {
-        return !ctrlDownAtStart || !ctrlHeldDuringDrag || !ctrlDownAtRelease;
+        return !ctrlDownAtStart;
     }
 
     private void CancelPendingPassiveButton()

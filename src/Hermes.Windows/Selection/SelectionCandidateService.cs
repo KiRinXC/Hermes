@@ -113,7 +113,7 @@ public sealed class SelectionCandidateService
 
     internal static bool ShouldIgnoreBeforeEvaluation(bool ctrlDownAtStart, bool ctrlHeldDuringDrag, bool ctrlDownAtRelease)
     {
-        return !ctrlDownAtStart || !ctrlHeldDuringDrag || !ctrlDownAtRelease;
+        return !ctrlDownAtStart;
     }
 
     public static bool IsExpired(SelectionCandidate candidate, DateTimeOffset? now = null)
@@ -166,7 +166,7 @@ public sealed class SelectionCandidateService
             return SelectionCandidateDecision.Reject("sensitive-control");
         }
 
-        if (!input.CtrlDownAtStart || !input.CtrlHeldDuringDrag || !input.CtrlDownAtRelease)
+        if (!input.CtrlDownAtStart)
         {
             return SelectionCandidateDecision.Reject("modifier-not-held");
         }

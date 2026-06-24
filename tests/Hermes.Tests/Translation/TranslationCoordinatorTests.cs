@@ -23,12 +23,12 @@ public static class TranslationCoordinatorTests
             ctrlDownAtStart: false,
             ctrlHeldDuringDrag: false,
             ctrlDownAtRelease: false));
-        TestAssert.True(TranslationCoordinator.ShouldIgnorePassiveMouseGesture(
-            ctrlDownAtStart: true,
-            ctrlHeldDuringDrag: false,
-            ctrlDownAtRelease: true));
         TestAssert.False(TranslationCoordinator.ShouldIgnorePassiveMouseGesture(
             ctrlDownAtStart: true,
+            ctrlHeldDuringDrag: false,
+            ctrlDownAtRelease: false));
+        TestAssert.True(TranslationCoordinator.ShouldIgnorePassiveMouseGesture(
+            ctrlDownAtStart: false,
             ctrlHeldDuringDrag: true,
             ctrlDownAtRelease: true));
     }

@@ -48,6 +48,8 @@ public sealed class KeyboardHookService : IDisposable
             NativeMethods.UnhookWindowsHookEx(_hookHandle);
             _hookHandle = IntPtr.Zero;
         }
+
+        KeyboardModifierState.ResetTrackedState();
     }
 
     public void Dispose()
@@ -62,11 +64,18 @@ public sealed class KeyboardHookService : IDisposable
             if (nCode >= 0)
             {
                 var message = wParam.ToInt32();
-                if (message is NativeMethods.WmKeyDown or NativeMethods.WmSysKeyDown)
+                if (message is NativeMethods.WmKeyDown or NativeMethods.WmSysKeyDown or NativeMethods.WmKeyUp or NativeMethods.WmSysKeyUp)
                 {
                     var data = Marshal.PtrToStructure<NativeMethods.KBDLLHOOKSTRUCT>(lParam);
-                    UserActivity?.Invoke(this, EventArgs.Empty);
-                    if (data.vkCode == VirtualKeyEscape)
+                    var isDown = message is NativeMethods.WmKeyDown or NativeMethods.WmSysKeyDown;
+                    KeyboardModifierState.NoteKeyState(data.vkCode, isDown, data.time);
+
+                    if (ShouldRaiseUserActivity(data.vkCode, isDown))
+                    {
+                        UserActivity?.Invoke(this, EventArgs.Empty);
+                    }
+
+                    if (isDown && data.vkCode == VirtualKeyEscape)
                     {
                         EscapePressed?.Invoke(this, EventArgs.Empty);
                     }
@@ -79,5 +88,20 @@ public sealed class KeyboardHookService : IDisposable
         }
 
         return NativeMethods.CallNextHookEx(_hookHandle, nCode, wParam, lParam);
+    }
+
+    internal static bool ShouldRaiseUserActivity(uint virtualKey, bool isDown)
+    {
+        if (!isDown)
+        {
+            return false;
+        }
+
+        return virtualKey != (uint)NativeMethods.VkControl
+            && virtualKey != (uint)NativeMethods.VkLControl
+            && virtualKey != (uint)NativeMethods.VkRControl
+            && virtualKey != (uint)NativeMethods.VkMenu
+            && virtualKey != (uint)NativeMethods.VkLMenu
+            && virtualKey != (uint)NativeMethods.VkRMenu;
     }
 }

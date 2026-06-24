@@ -15,8 +15,8 @@ Hermes 是一个 Windows 全局 AI 划词翻译助手。选中英文内容后，
 ## 功能亮点
 
 - 全局快捷键翻译，默认 `Ctrl+Alt+E`。
-- 按住 `Ctrl` 划词后显示悬浮翻译按钮并执行翻译，普通划词不会触发。
-- 按住 `Alt` 划词后使用同一悬浮按钮触发术语解释（可配置“解释个性化偏好”）。
+- 先按住 `Ctrl` 再划词会显示悬浮翻译按钮并执行翻译；鼠标和键盘松开顺序不限，普通划词不会触发。
+- 先按住 `Alt` 再划词会使用同一悬浮按钮触发术语解释（可配置“解释个性化偏好”）。
 - 翻译结果以悬浮卡片显示，支持复制、重新翻译、固定、关闭和拖动。
 - 翻译卡片和设置窗口支持从边缘/四角调整大小并自动记忆；悬浮按钮图标大小和浮窗字号都可在外观页通过五点横向控件选择，图标预览会随浅色/深色主题切换且保持透明背景。
 - 默认使用腾讯 Transmart 翻译；可切换 OpenAI / OpenAI-compatible。
@@ -31,7 +31,7 @@ Hermes 是一个 Windows 全局 AI 划词翻译助手。选中英文内容后，
 正式对外发布时，请在 GitHub Releases 中下载：
 
 ```text
-Hermes-v0.2.1-win-x64-portable.zip
+Hermes-v0.2.2-win-x64-portable.zip
 ```
 
 解压后运行：
@@ -54,8 +54,8 @@ artifacts\publish\Hermes.Windows\manual-test\win-x64-self-contained\
 2. 在系统托盘中打开 Hermes 设置。
 3. 默认 Provider 为 Transmart，可直接使用；如需 OpenAI 再填写 API Key / Base URL / Model。
 4. 选中一段英文文本，按 `Ctrl+Alt+E` 翻译。
-5. 或按住 `Ctrl` 划选英文文本，点击出现的悬浮翻译图标。
-6. 按住 `Alt` 划选术语，点击悬浮按钮查看解释。
+5. 或先按住 `Ctrl`，再划选英文文本，松开鼠标/键盘后点击出现的悬浮翻译图标。
+6. 先按住 `Alt`，再划选术语，松开鼠标/键盘后点击悬浮按钮查看解释。
 
 默认 Base URL：
 
@@ -108,27 +108,27 @@ powershell -ExecutionPolicy Bypass -File scripts\Publish-Hermes.ps1
 生成 GitHub Release portable zip：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\Package-HermesRelease.ps1 -Version 0.2.1
+powershell -ExecutionPolicy Bypass -File scripts\Package-HermesRelease.ps1 -Version 0.2.2
 ```
 
 输出位置：
 
 ```text
-artifacts\release\v0.2.1\
+artifacts\release\v0.2.2\
 ```
 
 其中包含：
 
-- `Hermes-v0.2.1-win-x64-portable.zip`
+- `Hermes-v0.2.2-win-x64-portable.zip`
 - `checksums.txt`
 
 ## GitHub Release 流程
 
 1. 运行测试：`scripts\Test-Hermes.ps1`
-2. 生成 zip：`scripts\Package-HermesRelease.ps1 -Version 0.2.1`
-3. 创建 tag：`v0.2.1`
+2. 生成 zip：`scripts\Package-HermesRelease.ps1 -Version 0.2.2`
+3. 创建 tag：`v0.2.2`
 4. 在 GitHub Releases 上传 zip 和 `checksums.txt`
-5. 把 `docs/release-notes/v0.2.1.md` 的内容作为 Release Notes
+5. 把 `docs/release-notes/v0.2.2.md` 的内容作为 Release Notes
 
 > 目前 Hermes 还没有代码签名证书。Windows SmartScreen 可能会提示未知发布者，这是独立 Windows 应用早期发布时常见的情况。
 

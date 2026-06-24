@@ -7,11 +7,14 @@ namespace Hermes.Windows.Input;
 
 public sealed class MouseHookService : IDisposable
 {
+    internal static readonly TimeSpan ModifierStartTolerance = TimeSpan.FromMilliseconds(180);
+
     private readonly AppLogger _logger;
     private readonly NativeMethods.HookProc _hookProc;
     private IntPtr _hookHandle;
     private NativeMethods.POINT _downPoint;
     private DateTimeOffset _downAt;
+    private long _downMessageTimeMs;
     private bool _isLeftDown;
     private bool _hasMoved;
     private bool _ctrlDownAtStart;
@@ -68,7 +71,7 @@ public sealed class MouseHookService : IDisposable
             {
                 var message = wParam.ToInt32();
                 var data = Marshal.PtrToStructure<NativeMethods.MSLLHOOKSTRUCT>(lParam);
-                HandleMouseMessage(message, data.pt);
+                HandleMouseMessage(message, data.pt, data.time);
             }
         }
         catch (Exception ex)
@@ -79,26 +82,28 @@ public sealed class MouseHookService : IDisposable
         return NativeMethods.CallNextHookEx(_hookHandle, nCode, wParam, lParam);
     }
 
-    private void HandleMouseMessage(int message, NativeMethods.POINT point)
+    private void HandleMouseMessage(int message, NativeMethods.POINT point, uint messageTimeMs)
     {
         switch (message)
         {
             case NativeMethods.WmLButtonDown:
-                var ctrlDown = KeyboardModifierState.IsCtrlDown();
-                var altDown = KeyboardModifierState.IsAltDown();
-                _hasActiveMode = TryResolveGestureMode(ctrlDown, altDown, out _gestureMode);
+                _downAt = DateTimeOffset.Now;
+                _downMessageTimeMs = messageTimeMs;
+                _hasActiveMode = TryResolveGestureModeAtSelectionStart(_downMessageTimeMs, allowCurrentStateFallback: true, out _gestureMode);
                 _ctrlDownAtStart = _hasActiveMode;
                 _isLeftDown = ShouldTrackSelectionGesture(_ctrlDownAtStart);
                 _hasMoved = false;
                 _ctrlHeldDuringDrag = _ctrlDownAtStart;
                 _downPoint = point;
-                _downAt = DateTimeOffset.Now;
                 UserActivity?.Invoke(this, new MouseActivityEventArgs(point.X, point.Y, message));
                 break;
             case NativeMethods.WmMouseMove:
-                if (_isLeftDown)
+                if (_isLeftDown && !_ctrlDownAtStart && TryResolveGestureModeAtSelectionStart(_downMessageTimeMs, allowCurrentStateFallback: false, out var recoveredMoveMode))
                 {
-                    _ctrlHeldDuringDrag &= _hasActiveMode && IsGestureModifierHeld(_gestureMode);
+                    _hasActiveMode = true;
+                    _gestureMode = recoveredMoveMode;
+                    _ctrlDownAtStart = true;
+                    _ctrlHeldDuringDrag = true;
                 }
 
                 if (_isLeftDown && Distance(_downPoint, point) > 8)
@@ -109,7 +114,16 @@ public sealed class MouseHookService : IDisposable
                 break;
             case NativeMethods.WmLButtonUp:
                 var completedSelectionGesture = false;
+                if (!_ctrlDownAtStart && TryResolveGestureModeAtSelectionStart(_downMessageTimeMs, allowCurrentStateFallback: false, out var releaseMode))
+                {
+                    _hasActiveMode = true;
+                    _gestureMode = releaseMode;
+                    _ctrlDownAtStart = true;
+                    _ctrlHeldDuringDrag = true;
+                }
+
                 var modifierDownAtRelease = _hasActiveMode && IsGestureModifierHeld(_gestureMode);
+
                 if (_isLeftDown && _hasMoved && ShouldEmitSelectionGesture(_ctrlDownAtStart, _ctrlHeldDuringDrag, modifierDownAtRelease))
                 {
                     completedSelectionGesture = true;
@@ -179,12 +193,35 @@ public sealed class MouseHookService : IDisposable
 
     internal static bool ShouldTrackSelectionGesture(bool ctrlDownAtStart)
     {
-        return ctrlDownAtStart;
+        return true;
     }
 
     internal static bool ShouldEmitSelectionGesture(bool ctrlDownAtStart, bool ctrlHeldDuringDrag, bool ctrlDownAtRelease)
     {
-        return ctrlDownAtStart && ctrlHeldDuringDrag && ctrlDownAtRelease;
+        return ctrlDownAtStart;
+    }
+
+    internal static bool IsModifierTimingCompatible(DateTimeOffset mouseDownAt, DateTimeOffset modifierDownAt)
+    {
+        return modifierDownAt <= mouseDownAt || modifierDownAt - mouseDownAt <= ModifierStartTolerance;
+    }
+
+    private static bool TryResolveGestureModeAtSelectionStart(long mouseDownMessageTimeMs, bool allowCurrentStateFallback, out TranslationMode mode)
+    {
+        if (KeyboardModifierState.WasCtrlDownAt(mouseDownMessageTimeMs, ModifierStartTolerance, allowCurrentStateFallback))
+        {
+            mode = TranslationMode.Translate;
+            return true;
+        }
+
+        if (KeyboardModifierState.WasAltDownAt(mouseDownMessageTimeMs, ModifierStartTolerance, allowCurrentStateFallback))
+        {
+            mode = TranslationMode.Explain;
+            return true;
+        }
+
+        mode = TranslationMode.Translate;
+        return false;
     }
 }
 

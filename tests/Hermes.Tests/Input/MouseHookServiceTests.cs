@@ -7,27 +7,32 @@ public static class MouseHookServiceTests
 {
     public static void Register(TestSuite suite)
     {
-        suite.Add("mouse hook tracks selection gestures only while ctrl is held", TracksSelectionGesturesOnlyWithCtrl);
+        suite.Add("mouse hook requires modifier before dragging but allows release in any order", RequiresModifierBeforeDraggingButAllowsReleaseOrder);
+        suite.Add("mouse hook accepts only near-start modifier timing", AcceptsOnlyNearStartModifierTiming);
         suite.Add("mouse hook supports alt gesture explain mode", SupportsAltGestureExplainMode);
     }
 
-    private static void TracksSelectionGesturesOnlyWithCtrl()
+    private static void RequiresModifierBeforeDraggingButAllowsReleaseOrder()
     {
-        TestAssert.False(MouseHookService.ShouldTrackSelectionGesture(ctrlDownAtStart: false));
+        TestAssert.True(MouseHookService.ShouldTrackSelectionGesture(ctrlDownAtStart: false));
         TestAssert.True(MouseHookService.ShouldTrackSelectionGesture(ctrlDownAtStart: true));
 
         TestAssert.False(MouseHookService.ShouldEmitSelectionGesture(
-            ctrlDownAtStart: true,
-            ctrlHeldDuringDrag: true,
-            ctrlDownAtRelease: false));
-        TestAssert.False(MouseHookService.ShouldEmitSelectionGesture(
-            ctrlDownAtStart: true,
+            ctrlDownAtStart: false,
             ctrlHeldDuringDrag: false,
-            ctrlDownAtRelease: true));
+            ctrlDownAtRelease: false));
         TestAssert.True(MouseHookService.ShouldEmitSelectionGesture(
             ctrlDownAtStart: true,
-            ctrlHeldDuringDrag: true,
-            ctrlDownAtRelease: true));
+            ctrlHeldDuringDrag: false,
+            ctrlDownAtRelease: false));
+    }
+
+    private static void AcceptsOnlyNearStartModifierTiming()
+    {
+        var mouseDownAt = DateTimeOffset.Now;
+        TestAssert.True(MouseHookService.IsModifierTimingCompatible(mouseDownAt, mouseDownAt.AddMilliseconds(-120)));
+        TestAssert.True(MouseHookService.IsModifierTimingCompatible(mouseDownAt, mouseDownAt.AddMilliseconds(60)));
+        TestAssert.False(MouseHookService.IsModifierTimingCompatible(mouseDownAt, mouseDownAt.AddMilliseconds(260)));
     }
 
     private static void SupportsAltGestureExplainMode()

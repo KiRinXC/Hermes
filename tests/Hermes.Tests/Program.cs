@@ -23,6 +23,7 @@ OverlayExperienceTests.Register(suite);
 PopupMarkdownRendererTests.Register(suite);
 HotkeyGestureTests.Register(suite);
 MouseHookServiceTests.Register(suite);
+KeyboardModifierStateTests.Register(suite);
 TranslationCoordinatorTests.Register(suite);
 TriggerDiagnosticsServiceTests.Register(suite);
 SettingsWindowOptionTests.Register(suite);
