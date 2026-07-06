@@ -43,7 +43,7 @@ public static class KeyboardModifierStateTests
 
         KeyboardModifierState.ResetTrackedState();
         KeyboardModifierState.NoteKeyState(NativeMethods.VkLControl, isDown: true, messageTimeMs: 2_060);
-        TestAssert.True(KeyboardModifierState.WasCtrlDownAt(messageTimeMs: 2_000, tolerance));
+        TestAssert.False(KeyboardModifierState.WasCtrlDownAt(messageTimeMs: 2_000, tolerance));
 
         KeyboardModifierState.ResetTrackedState();
         KeyboardModifierState.NoteKeyState(NativeMethods.VkLControl, isDown: true, messageTimeMs: 2_260);

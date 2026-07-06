@@ -115,16 +115,12 @@ internal static class KeyboardModifierState
             return allowCurrentStateFallback && isCurrentlyDown;
         }
 
-        var toleranceMs = (long)Math.Ceiling(tolerance.TotalMilliseconds);
-        var latestAcceptableDown = messageTimeMs + toleranceMs;
-        var earliestRelevantUp = messageTimeMs - toleranceMs;
-
-        if (lastDownTimeMs > latestAcceptableDown)
+        if (lastDownTimeMs > messageTimeMs)
         {
             return false;
         }
 
-        if (lastUpTimeMs > lastDownTimeMs && lastUpTimeMs < earliestRelevantUp)
+        if (lastUpTimeMs > lastDownTimeMs && lastUpTimeMs <= messageTimeMs)
         {
             return allowCurrentStateFallback && isCurrentlyDown;
         }

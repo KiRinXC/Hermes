@@ -98,14 +98,6 @@ public sealed class MouseHookService : IDisposable
                 UserActivity?.Invoke(this, new MouseActivityEventArgs(point.X, point.Y, message));
                 break;
             case NativeMethods.WmMouseMove:
-                if (_isLeftDown && !_ctrlDownAtStart && TryResolveGestureModeAtSelectionStart(_downMessageTimeMs, allowCurrentStateFallback: false, out var recoveredMoveMode))
-                {
-                    _hasActiveMode = true;
-                    _gestureMode = recoveredMoveMode;
-                    _ctrlDownAtStart = true;
-                    _ctrlHeldDuringDrag = true;
-                }
-
                 if (_isLeftDown && Distance(_downPoint, point) > 8)
                 {
                     _hasMoved = true;
@@ -114,14 +106,6 @@ public sealed class MouseHookService : IDisposable
                 break;
             case NativeMethods.WmLButtonUp:
                 var completedSelectionGesture = false;
-                if (!_ctrlDownAtStart && TryResolveGestureModeAtSelectionStart(_downMessageTimeMs, allowCurrentStateFallback: false, out var releaseMode))
-                {
-                    _hasActiveMode = true;
-                    _gestureMode = releaseMode;
-                    _ctrlDownAtStart = true;
-                    _ctrlHeldDuringDrag = true;
-                }
-
                 var modifierDownAtRelease = _hasActiveMode && IsGestureModifierHeld(_gestureMode);
 
                 if (_isLeftDown && _hasMoved && ShouldEmitSelectionGesture(_ctrlDownAtStart, _ctrlHeldDuringDrag, modifierDownAtRelease))
@@ -193,7 +177,7 @@ public sealed class MouseHookService : IDisposable
 
     internal static bool ShouldTrackSelectionGesture(bool ctrlDownAtStart)
     {
-        return true;
+        return ctrlDownAtStart;
     }
 
     internal static bool ShouldEmitSelectionGesture(bool ctrlDownAtStart, bool ctrlHeldDuringDrag, bool ctrlDownAtRelease)
@@ -203,7 +187,7 @@ public sealed class MouseHookService : IDisposable
 
     internal static bool IsModifierTimingCompatible(DateTimeOffset mouseDownAt, DateTimeOffset modifierDownAt)
     {
-        return modifierDownAt <= mouseDownAt || modifierDownAt - mouseDownAt <= ModifierStartTolerance;
+        return modifierDownAt <= mouseDownAt;
     }
 
     private static bool TryResolveGestureModeAtSelectionStart(long mouseDownMessageTimeMs, bool allowCurrentStateFallback, out TranslationMode mode)

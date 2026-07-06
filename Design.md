@@ -105,7 +105,7 @@ TranslationCoordinator
 TranslationPopupWindow 显示结果
 ```
 
-被动鼠标路径不执行剪贴板复制，且普通拖选不会进入候选判断或触发诊断记录；只有在鼠标按下前已经按住 Ctrl 或 Alt 的拖选才会继续评估悬浮按钮，鼠标和键盘的松开顺序不影响结果。实现上以低级鼠标消息的按下时间为准，回看低级键盘 hook 记录的 Ctrl/Alt 按下-释放区间，而不是用鼠标释放瞬间的键盘状态重新判定触发。鼠标释放后只做短暂选区稳定等待，随后候选评估阶段会对敏感控件 UI Automation 检查使用短时间盒，并用更短时间盒预读取选区；如果快速读到文本，则校验并缓存到候选对象，点击按钮后直接使用预读文本；如果 UI Automation 没有暴露选区或预读超时，则仍按手势置信度显示按钮，等用户点击后再走显式触发路径（UI Automation + 受控剪贴板兜底）读取文本。若 UI Automation 明确读到文本但文本不满足校验，则不显示按钮。这样既避免被动路径污染剪贴板，也防止 Zotero、PDF、Electron 或自绘控件等 UI Automation 覆盖较弱的应用拖慢悬浮按钮显示。
+被动鼠标路径不执行剪贴板复制，且普通拖选不会进入候选判断或触发诊断记录；只有在鼠标按下前已经长按 Ctrl 或 Alt，并且鼠标按下那一刻仍处于按住状态的拖选，才会继续评估悬浮按钮。鼠标按下后再按 Ctrl/Alt 不会补判为有效手势；一旦起手合法，鼠标和键盘的松开顺序不影响结果。实现上以低级鼠标消息的按下时间为准，回看低级键盘 hook 记录的 Ctrl/Alt 按下-释放区间，而不是用鼠标释放瞬间的键盘状态重新判定触发。鼠标释放后只做短暂选区稳定等待，随后候选评估阶段会对敏感控件 UI Automation 检查使用短时间盒，并用更短时间盒预读取选区；如果快速读到文本，则校验并缓存到候选对象，点击按钮后直接使用预读文本；如果 UI Automation 没有暴露选区或预读超时，则仍按手势置信度显示按钮，等用户点击后再走显式触发路径（UI Automation + 受控剪贴板兜底）读取文本。若 UI Automation 明确读到文本但文本不满足校验，则不显示按钮。这样既避免被动路径污染剪贴板，也防止 Zotero、PDF、Electron 或自绘控件等 UI Automation 覆盖较弱的应用拖慢悬浮按钮显示。
 
 ### 剪贴板翻译
 
@@ -141,7 +141,7 @@ ClipboardSelectionProvider 读取当前剪贴板文本
 
 ### Input
 
-`HotkeyService` 负责注册全局快捷键。`KeyboardHookService` 和 `MouseHookService` 负责低级输入监听，用于关闭被动 UI、捕捉 Esc、识别鼠标选择手势。`KeyboardHookService` 会缓存 Ctrl/Alt 的按下与释放状态及低级 hook 消息时间，供鼠标起手判定读取，避免只靠瞬时 `GetAsyncKeyState` 采样导致拖选起手丢键；单独按下或松开 Ctrl/Alt 不再作为关闭被动 UI 的用户活动。启动阶段会等通知窗口显示后再注册触发器，避免低级 hook 在 UI 线程初始化繁忙时影响鼠标流畅度。Hook 内不做重计算，只转发事件给协调层。
+`HotkeyService` 负责注册全局快捷键。`KeyboardHookService` 和 `MouseHookService` 负责低级输入监听，用于关闭被动 UI、捕捉 Esc、识别鼠标选择手势。`KeyboardHookService` 会缓存 Ctrl/Alt 的按下与释放状态及低级 hook 消息时间，供鼠标起手判定读取，避免只靠瞬时 `GetAsyncKeyState` 采样导致拖选起手丢键；`MouseHookService` 只在鼠标左键按下时做一次起手判定，普通拖选不会进入后续移动/释放阶段的补判。单独按下或松开 Ctrl/Alt 不再作为关闭被动 UI 的用户活动。启动阶段会等通知窗口显示后再注册触发器，避免低级 hook 在 UI 线程初始化繁忙时影响鼠标流畅度。Hook 内不做重计算，只转发事件给协调层。
 
 ### Selection
 
@@ -242,14 +242,14 @@ powershell -ExecutionPolicy Bypass -File scripts\Publish-Hermes.ps1
 对外 GitHub Release 采用 zip 包分发，脚本会先生成固定 self-contained portable 目录，再压缩为版本化 zip 并生成 SHA256 校验文件：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\Package-HermesRelease.ps1 -Version 0.2.2
+powershell -ExecutionPolicy Bypass -File scripts\Package-HermesRelease.ps1 -Version 0.2.3
 ```
 
 输出目录：
 
 ```text
-artifacts\release\v0.2.2\
-├─ Hermes-v0.2.2-win-x64-portable.zip
+artifacts\release\v0.2.3\
+├─ Hermes-v0.2.3-win-x64-portable.zip
 └─ checksums.txt
 ```
 
@@ -379,6 +379,8 @@ Hermes 的用户数据保存在：
 | 2026-06-24 | 修正被动划词触发门槛：只有在鼠标按下前已经按住 Ctrl 或 Alt 的拖选才会进入候选评估；鼠标和键盘的松开顺序不再要求同时，避免拖选中途才按下修饰键也触发按钮。 | Input / Selection / Translation / Tests / Docs |
 | 2026-06-24 | 强化键盘修饰键采样：`KeyboardHookService` 在低级 hook 中缓存 Ctrl/Alt 的按下与释放状态，鼠标手势不再只依赖 `GetAsyncKeyState` 的瞬时采样，降低起手时机丢失导致的“完全无法触发”。 | Input / Tests / Docs |
 | 2026-06-24 | 修复 Ctrl/Alt 划词仍依赖同步松开的问题：键盘 hook 记录低级消息时间，鼠标手势按左键按下时刻回看修饰键按下-释放区间；Ctrl/Alt 单独按下或松开也不再关闭刚出现的被动按钮。 | Input / Tests / Docs |
+| 2026-07-05 | 收紧 Ctrl/Alt 被动划词起手门槛：只有鼠标左键按下时修饰键已经处于长按状态才跟踪并触发悬浮按钮；鼠标按下后再按 Ctrl/Alt 不再补判，起手合法后仍允许键盘或鼠标任意先松开。 | Input / Tests / Docs |
+| 2026-07-06 | 新增 `docs\release-notes\v0.2.3.md`，并将 README、打包脚本默认版本与打包策略中的对外发布示例更新为 v0.2.3；本次发布将实际测试确认的 Ctrl/Alt 起手门槛修复同步到 GitHub Release。 | Input / Tests / 文档维护 / 打包发布 |
 | 2026-05-31 | 将外观页浮窗字号端点预览从 `TextBlock` 字母改为固定 24x24 画布的描边矢量 `A` 图标，消除字体基线导致的视觉错位，并让变化在界面上可见。 | Shell / Tests |
 | 2026-05-31 | 新增 `docs\release-notes\v0.2.0.md`，并将 README 与打包策略中的对外发布示例更新为 v0.2.0。 | 文档维护 / 打包发布 |
 | 2026-06-05 | 新增 `docs\release-notes\v0.2.1.md`，并将 README 与打包策略中的对外发布示例更新为 v0.2.1；本次小更新修复高 DPI / 200% 缩放下悬浮按钮、翻译卡片、托盘通知和托盘菜单的物理坐标定位，并强化默认翻译走 Tencent Transmart、不自动启用 OpenAI 翻译。 | Overlay / Tray / Settings / 文档维护 / 打包发布 |

@@ -8,13 +8,13 @@ public static class MouseHookServiceTests
     public static void Register(TestSuite suite)
     {
         suite.Add("mouse hook requires modifier before dragging but allows release in any order", RequiresModifierBeforeDraggingButAllowsReleaseOrder);
-        suite.Add("mouse hook accepts only near-start modifier timing", AcceptsOnlyNearStartModifierTiming);
+        suite.Add("mouse hook requires modifier already down at selection start", RequiresModifierAlreadyDownAtSelectionStart);
         suite.Add("mouse hook supports alt gesture explain mode", SupportsAltGestureExplainMode);
     }
 
     private static void RequiresModifierBeforeDraggingButAllowsReleaseOrder()
     {
-        TestAssert.True(MouseHookService.ShouldTrackSelectionGesture(ctrlDownAtStart: false));
+        TestAssert.False(MouseHookService.ShouldTrackSelectionGesture(ctrlDownAtStart: false));
         TestAssert.True(MouseHookService.ShouldTrackSelectionGesture(ctrlDownAtStart: true));
 
         TestAssert.False(MouseHookService.ShouldEmitSelectionGesture(
@@ -27,11 +27,11 @@ public static class MouseHookServiceTests
             ctrlDownAtRelease: false));
     }
 
-    private static void AcceptsOnlyNearStartModifierTiming()
+    private static void RequiresModifierAlreadyDownAtSelectionStart()
     {
         var mouseDownAt = DateTimeOffset.Now;
         TestAssert.True(MouseHookService.IsModifierTimingCompatible(mouseDownAt, mouseDownAt.AddMilliseconds(-120)));
-        TestAssert.True(MouseHookService.IsModifierTimingCompatible(mouseDownAt, mouseDownAt.AddMilliseconds(60)));
+        TestAssert.False(MouseHookService.IsModifierTimingCompatible(mouseDownAt, mouseDownAt.AddMilliseconds(60)));
         TestAssert.False(MouseHookService.IsModifierTimingCompatible(mouseDownAt, mouseDownAt.AddMilliseconds(260)));
     }
 
