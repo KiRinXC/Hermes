@@ -23,7 +23,27 @@ public sealed class SelectionOrchestrator
 
     public async Task<(SelectionResult Result, SelectionValidationResult Validation)> ReadForExplicitTriggerAsync(CancellationToken cancellationToken = default)
     {
+        return await ReadForExplicitTriggerCoreAsync(expectedForeground: null, cancellationToken);
+    }
+
+    public async Task<(SelectionResult Result, SelectionValidationResult Validation)> ReadForCandidateTriggerAsync(
+        ForegroundWindowInfo? expectedForeground,
+        CancellationToken cancellationToken = default)
+    {
+        return await ReadForExplicitTriggerCoreAsync(expectedForeground, cancellationToken);
+    }
+
+    private async Task<(SelectionResult Result, SelectionValidationResult Validation)> ReadForExplicitTriggerCoreAsync(
+        ForegroundWindowInfo? expectedForeground,
+        CancellationToken cancellationToken)
+    {
         var foreground = _foregroundWindowService.GetForegroundWindowInfo();
+        if (!ForegroundWindowService.MatchesExpectedWindow(expectedForeground, foreground))
+        {
+            var changedWindowResult = SelectionResult.Empty("原选区所在窗口已变化，请重新划词。", foreground);
+            return (changedWindowResult, SelectionValidationResult.Invalid(changedWindowResult.Message!));
+        }
+
         if (_foregroundWindowService.IsExcluded(foreground)
             || await _foregroundWindowService.IsFocusedElementSensitiveAsync(cancellationToken))
         {
@@ -38,7 +58,7 @@ public sealed class SelectionOrchestrator
             return (result, validation);
         }
 
-        result = await _clipboardProvider.TryCopySelectionAsync(cancellationToken);
+        result = await _clipboardProvider.TryCopySelectionAsync(expectedForeground ?? foreground, cancellationToken);
         validation = SelectionTextValidator.Validate(result.Text, _settingsService.Current);
         return (result, validation);
     }

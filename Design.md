@@ -105,7 +105,7 @@ TranslationCoordinator
 TranslationPopupWindow 显示结果
 ```
 
-被动鼠标路径不执行剪贴板复制，且普通拖选不会进入候选判断或触发诊断记录；只有在鼠标按下前已经长按 Ctrl 或 Alt，并且鼠标按下那一刻仍处于按住状态的拖选，才会继续评估悬浮按钮。鼠标按下后再按 Ctrl/Alt 不会补判为有效手势；一旦起手合法，鼠标和键盘的松开顺序不影响结果。实现上以低级鼠标消息的按下时间为准，回看低级键盘 hook 记录的 Ctrl/Alt 按下-释放区间，而不是用鼠标释放瞬间的键盘状态重新判定触发。鼠标释放后只做短暂选区稳定等待，随后候选评估阶段会对敏感控件 UI Automation 检查使用短时间盒，并用更短时间盒预读取选区；如果快速读到文本，则校验并缓存到候选对象，点击按钮后直接使用预读文本；如果 UI Automation 没有暴露选区或预读超时，则仍按手势置信度显示按钮，等用户点击后再走显式触发路径（UI Automation + 受控剪贴板兜底）读取文本。若 UI Automation 明确读到文本但文本不满足校验，则不显示按钮。这样既避免被动路径污染剪贴板，也防止 Zotero、PDF、Electron 或自绘控件等 UI Automation 覆盖较弱的应用拖慢悬浮按钮显示。
+被动鼠标路径不执行剪贴板复制，且普通拖选不会进入候选判断或触发诊断记录；只有在鼠标按下前已经长按 Ctrl 或 Alt，并且鼠标按下那一刻仍处于按住状态的拖选，才会继续评估悬浮按钮。鼠标按下后再按 Ctrl/Alt 不会补判为有效手势；一旦起手合法，鼠标和键盘的松开顺序不影响结果。实现上以低级鼠标消息的按下时间为准，同时要求 `GetAsyncKeyState` 确认修饰键当前真实按下，并由低级键盘 hook 的按下-释放时间线确认该状态；仅有遗留的 hook 缓存不能触发普通划词。鼠标释放后只做短暂选区稳定等待，随后候选评估阶段会对敏感控件 UI Automation 检查使用短时间盒，并用更短时间盒预读取选区；如果快速读到文本，则校验并缓存到候选对象，点击按钮后直接使用预读文本；如果 UI Automation 没有暴露选区或预读超时，则仍按手势置信度显示按钮，等用户点击后再走显式触发路径（UI Automation + 受控剪贴板兜底）读取文本。若 UI Automation 明确读到文本但文本不满足校验，则不显示按钮。这样既避免被动路径污染剪贴板，也防止 Zotero、PDF、Electron 或自绘控件等 UI Automation 覆盖较弱的应用拖慢悬浮按钮显示。
 
 ### 剪贴板翻译
 
@@ -122,6 +122,8 @@ ClipboardSelectionProvider 读取当前剪贴板文本
 ```
 
 这是 UI Automation 和选区识别失败时的兜底路径。
+
+显式选区读取的受控复制不会直接信任剪贴板当前文本。Hermes 会先记住候选产生时的前台窗口，在复制前再次核对窗口句柄；随后暂存原剪贴板、写入 Hermes 私有探针、发送 `Ctrl+C`，并在最多 350ms 内等待剪贴板序列号变化且探针被新数据替换。只有满足这些条件的新文本才会进入翻译，超时、窗口变化或复制无文本都会明确失败，最后统一恢复原剪贴板。该协议避免悬浮按钮误读其他窗口或把此前复制的残留文本当成本次选区。
 
 ## 模块说明
 
@@ -141,15 +143,15 @@ ClipboardSelectionProvider 读取当前剪贴板文本
 
 ### Input
 
-`HotkeyService` 负责注册全局快捷键。`KeyboardHookService` 和 `MouseHookService` 负责低级输入监听，用于关闭被动 UI、捕捉 Esc、识别鼠标选择手势。`KeyboardHookService` 会缓存 Ctrl/Alt 的按下与释放状态及低级 hook 消息时间，供鼠标起手判定读取，避免只靠瞬时 `GetAsyncKeyState` 采样导致拖选起手丢键；`MouseHookService` 只在鼠标左键按下时做一次起手判定，普通拖选不会进入后续移动/释放阶段的补判。单独按下或松开 Ctrl/Alt 不再作为关闭被动 UI 的用户活动。启动阶段会等通知窗口显示后再注册触发器，避免低级 hook 在 UI 线程初始化繁忙时影响鼠标流畅度。Hook 内不做重计算，只转发事件给协调层。
+`HotkeyService` 负责注册全局快捷键。`KeyboardHookService` 和 `MouseHookService` 负责低级输入监听，用于关闭被动 UI、捕捉 Esc、识别鼠标选择手势。`KeyboardHookService` 会缓存 Ctrl/Alt 的按下与释放状态及低级 hook 消息时间，供鼠标起手判定读取；`MouseHookService` 在鼠标左键按下时同时检查物理键状态与 hook 时间线，二者都确认修饰键已按下才跟踪手势，避免 hook 遗留状态让普通划词误触。普通拖选不会进入后续移动/释放阶段的补判。单独按下或松开 Ctrl/Alt 不再作为关闭被动 UI 的用户活动。启动阶段会等通知窗口显示后再注册触发器，避免低级 hook 在 UI 线程初始化繁忙时影响鼠标流畅度。Hook 内不做重计算，只转发事件给协调层。
 
 ### Selection
 
 选区模块负责“从哪里拿到文本”和“文本是否值得翻译”。
 
 - `UiAutomationSelectionProvider` 通过 Windows UI Automation 读取当前选区，读取工作运行在后台线程，避免点击悬浮翻译按钮时卡住 WPF UI 线程。
-- `ClipboardSelectionProvider` 在显式触发时使用受控复制或读取剪贴板文本；剪贴板操作运行在专用 STA 线程，不再通过主 Dispatcher 执行 `Ctrl+C` 和剪贴板读写。
-- `ForegroundWindowService` 判断前台窗口、排除应用和敏感控件；被动划词按钮路径中的敏感控件检查使用短时间盒，避免慢 UI Automation 控件拖住按钮显示。
+- `ClipboardSelectionProvider` 在显式触发时使用受控复制或读取剪贴板文本；受控复制通过私有探针和 `GetClipboardSequenceNumber` 验证本次复制确实写入新内容，最多等待 350ms，并始终尝试恢复原剪贴板。剪贴板操作运行在专用 STA 线程，不通过主 Dispatcher 执行 `Ctrl+C` 和剪贴板读写。
+- `ForegroundWindowService` 判断前台窗口、排除应用和敏感控件，并校验候选窗口在显式复制前没有变化；被动划词按钮路径中的敏感控件检查使用短时间盒，避免慢 UI Automation 控件拖住按钮显示。
 - `SelectionTextValidator` 根据语言、长度和设置校验文本。
 - `SelectionOrchestrator` 决定显式触发、被动鼠标和剪贴板翻译时的读取策略。
 
@@ -202,7 +204,7 @@ ClipboardSelectionProvider 读取当前剪贴板文本
 
 ### Tests
 
-`tests/Hermes.Tests` 是轻量控制台测试套件，覆盖设置、脱敏、选区校验、选择候选、UI Automation 预读失败/超时手势兜底、被动路径敏感控件检查时间盒、快捷键解析、鼠标 Ctrl/Alt 起手触发门控、启动触发器延迟注册、启动通知点击设置、设置窗口选项文案和值映射、设置/弹窗边缘缩放与尺寸持久化约束、外观页悬浮按钮五点尺寸选择器对齐与主题预览、外观页浮窗字号五点选择器、设置/弹窗滚动条主题样式、通知点击后的设置窗抬前逻辑、历史/诊断清理、OpenAI 与 Transmart 响应解析、加载态通道显示、悬浮按钮清晰度和去重约束、翻译卡片拖拽/外部点击关闭入口、多卡片事件隔离约束、弹窗 Markdown 渲染回归和 UI 字重约束等逻辑。WPF 可视交互仍需要真实应用试用补充验证。
+`tests/Hermes.Tests` 是轻量控制台测试套件，覆盖设置、脱敏、选区校验、选择候选、UI Automation 预读失败/超时手势兜底、受控剪贴板新鲜度与目标窗口约束、被动路径敏感控件检查时间盒、快捷键解析、鼠标 Ctrl/Alt 起手物理键与 hook 双重门控、启动触发器延迟注册、启动通知点击设置、设置窗口选项文案和值映射、设置/弹窗边缘缩放与尺寸持久化约束、外观页悬浮按钮五点尺寸选择器对齐与主题预览、外观页浮窗字号五点选择器、设置/弹窗滚动条主题样式、通知点击后的设置窗抬前逻辑、历史/诊断清理、OpenAI 与 Transmart 响应解析、加载态通道显示、悬浮按钮清晰度和去重约束、翻译卡片拖拽/外部点击关闭入口、多卡片事件隔离约束、弹窗 Markdown 渲染回归和 UI 字重约束等逻辑。WPF 可视交互仍需要真实应用试用补充验证。
 
 ## 打包策略
 
@@ -210,7 +212,7 @@ ClipboardSelectionProvider 读取当前剪贴板文本
 
 - `global.json` 指定 .NET SDK `10.0.300`。
 - `NuGet.Config` 使用 `.nuget\offline` 作为优先包源，并保留 `nuget.org` 作为在线包源。
-- `scripts\Use-HermesEnv.ps1` 统一设置 `DOTNET_CLI_HOME`、NuGet 缓存、scratch/cache 目录和可选代理，并确保 `.nuget\offline` 本地源目录存在；构建中间目录默认落在系统临时目录，避免受工作区删除限制影响。
+- `scripts\Use-HermesEnv.ps1` 统一设置 `DOTNET_CLI_HOME`、NuGet 缓存、scratch/cache 目录和可选代理，并确保 `.nuget\offline` 本地源目录存在；SDK 根目录可由 `HERMES_DOTNET_ROOT` 指定，未指定时依次探测 `C:\Code\Env\dotnet`、`D:\Code\Env\dotnet` 和 `PATH`。构建中间目录默认落在系统临时目录，避免受工作区删除限制影响。
 - `scripts\Restore-Hermes.ps1`、`scripts\Test-Hermes.ps1`、`scripts\Publish-Hermes.ps1` 和 `scripts\Package-HermesRelease.ps1` 是标准入口。
 
 自包含发布需要以下 runtime packs 放在 `.nuget\offline`：
@@ -242,14 +244,14 @@ powershell -ExecutionPolicy Bypass -File scripts\Publish-Hermes.ps1
 对外 GitHub Release 采用 zip 包分发，脚本会先生成固定 self-contained portable 目录，再压缩为版本化 zip 并生成 SHA256 校验文件：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\Package-HermesRelease.ps1 -Version 0.2.3
+powershell -ExecutionPolicy Bypass -File scripts\Package-HermesRelease.ps1 -Version 0.2.4
 ```
 
 输出目录：
 
 ```text
-artifacts\release\v0.2.3\
-├─ Hermes-v0.2.3-win-x64-portable.zip
+artifacts\release\v0.2.4\
+├─ Hermes-v0.2.4-win-x64-portable.zip
 └─ checksums.txt
 ```
 
@@ -325,6 +327,8 @@ Hermes 的用户数据保存在：
 
 | 日期 | 变更 | 影响范围 |
 | --- | --- | --- |
+| 2026-07-13 | 新增 `docs\release-notes\v0.2.4.md`，将 README、打包脚本默认版本和打包策略示例更新为 v0.2.4；本次发布聚焦划词文本读取、旧剪贴板隔离和普通划词误触三项稳定性修复。 | Input / Selection / Tests / 文档维护 / 打包发布 |
+| 2026-07-13 | 修复划词触发与读取协议：鼠标起手同时校验 Ctrl/Alt 物理按下状态和 hook 时间线，普通划词不再因遗留键状态显示按钮；候选点击绑定原前台窗口；受控剪贴板以私有探针和序列号验证本次 `Ctrl+C` 的新内容，等待上限提升到 350ms，失败时不再翻译旧剪贴板文本。同步增加回归测试，并让构建脚本自动探测本机 .NET SDK。 | Input / Selection / Translation / Tests / 开发环境 |
 | 2026-05-26 | 建立根目录 `Design.md`，明确项目结构、核心流程、模块职责和文档同步规则。 | 文档维护 |
 | 2026-05-26 | 确定真实使用测试优先采用 `win-x64 self-contained` portable 文件夹包，输出到 `artifacts\publish\Hermes.Windows\manual-test\win-x64-self-contained\`。 | 打包发布 |
 | 2026-05-26 | 记录自包含 runtime packs 不可用时的临时 `win-x64 framework-dependent` 发布路径，用于当前开发机试用。 | 打包发布 |

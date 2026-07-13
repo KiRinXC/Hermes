@@ -31,7 +31,7 @@ Hermes 是一个 Windows 全局 AI 划词翻译助手。选中英文内容后，
 正式对外发布时，请在 GitHub Releases 中下载：
 
 ```text
-Hermes-v0.2.3-win-x64-portable.zip
+Hermes-v0.2.4-win-x64-portable.zip
 ```
 
 解压后运行：
@@ -79,7 +79,9 @@ Windows 上不同应用暴露选区的方式并不一致，所以 Hermes 采用�
 2. 支持用快捷键稳定触发翻译。
 3. 在显式触发时，必要情况下使用受控剪贴板兜底。
 
-这意味着：Chrome、Edge、VS Code、记事本、PDF 阅读器、办公软件等主流应用会尽量提供顺滑体验；少数应用可能需要使用快捷键或剪贴板兜底。
+受控剪贴板兜底只接受本次 `Ctrl+C` 产生的新内容：Hermes 会验证剪贴板确实发生更新，并在完成后恢复原剪贴板；如果没有读到新文本，不会拿之前复制过的残留内容去翻译。
+
+这意味着：Chrome、Edge、VS Code、记事本、PDF 阅读器、办公软件等主流应用会尽量提供顺滑体验；少数应用可能需要使用快捷键或托盘中的“翻译剪贴板”。
 
 ## 隐私说明
 
@@ -91,10 +93,10 @@ Windows 上不同应用暴露选区的方式并不一致，所以 Hermes 采用�
 
 ## 从源码构建
 
-项目目标框架是 `net10.0-windows`。当前开发环境使用：
+项目目标框架是 `net10.0-windows`。构建脚本会依次查找 `C:\Code\Env\dotnet`、`D:\Code\Env\dotnet` 和 `PATH` 中的 SDK；也可以显式设置：
 
 ```powershell
-C:\Code\Env\dotnet\dotnet.exe
+$env:HERMES_DOTNET_ROOT = "D:\Code\Env\dotnet"
 ```
 
 常用命令：
@@ -108,27 +110,27 @@ powershell -ExecutionPolicy Bypass -File scripts\Publish-Hermes.ps1
 生成 GitHub Release portable zip：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\Package-HermesRelease.ps1 -Version 0.2.3
+powershell -ExecutionPolicy Bypass -File scripts\Package-HermesRelease.ps1 -Version 0.2.4
 ```
 
 输出位置：
 
 ```text
-artifacts\release\v0.2.3\
+artifacts\release\v0.2.4\
 ```
 
 其中包含：
 
-- `Hermes-v0.2.3-win-x64-portable.zip`
+- `Hermes-v0.2.4-win-x64-portable.zip`
 - `checksums.txt`
 
 ## GitHub Release 流程
 
 1. 运行测试：`scripts\Test-Hermes.ps1`
-2. 生成 zip：`scripts\Package-HermesRelease.ps1 -Version 0.2.3`
-3. 创建 tag：`v0.2.3`
+2. 生成 zip：`scripts\Package-HermesRelease.ps1 -Version 0.2.4`
+3. 创建 tag：`v0.2.4`
 4. 在 GitHub Releases 上传 zip 和 `checksums.txt`
-5. 把 `docs/release-notes/v0.2.3.md` 的内容作为 Release Notes
+5. 把 `docs/release-notes/v0.2.4.md` 的内容作为 Release Notes
 
 > 目前 Hermes 还没有代码签名证书。Windows SmartScreen 可能会提示未知发布者，这是独立 Windows 应用早期发布时常见的情况。
 

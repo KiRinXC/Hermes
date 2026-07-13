@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.2.3",
+    [string]$Version = "0.2.4",
     [switch]$SkipPublish,
     [switch]$UseLocalProxy,
     [string]$ProxyUrl = "http://127.0.0.1:7890"

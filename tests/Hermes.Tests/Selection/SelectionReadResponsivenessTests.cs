@@ -9,6 +9,8 @@ public static class SelectionReadResponsivenessTests
     {
         suite.Add("ui automation selection read runs off the ui thread", UiAutomationSelectionReadRunsOffUiThread);
         suite.Add("clipboard fallback uses dedicated sta thread", ClipboardFallbackUsesDedicatedStaThread);
+        suite.Add("clipboard fallback requires a fresh clipboard update", ClipboardFallbackRequiresFreshUpdate);
+        suite.Add("clipboard fallback preserves the selection target window", ClipboardFallbackPreservesTargetWindow);
     }
 
     private static void UiAutomationSelectionReadRunsOffUiThread()
@@ -30,6 +32,29 @@ public static class SelectionReadResponsivenessTests
         TestAssert.Equal(ApartmentState.STA, apartment);
         TestAssert.True(code.Contains("RunOnStaThreadAsync", StringComparison.Ordinal));
         TestAssert.False(code.Contains("Application.Current.Dispatcher.InvokeAsync", StringComparison.Ordinal));
+    }
+
+    private static void ClipboardFallbackRequiresFreshUpdate()
+    {
+        TestAssert.False(ClipboardSelectionProvider.IsFreshClipboardUpdate(42, 42));
+        TestAssert.True(ClipboardSelectionProvider.IsFreshClipboardUpdate(42, 43));
+
+        var code = File.ReadAllText(FindRepoFile("src/Hermes.Windows/Selection/ClipboardSelectionProvider.cs"));
+        TestAssert.Contains("Hermes.ControlledCopy.Probe", code);
+        TestAssert.Contains("GetClipboardSequenceNumber", code);
+        TestAssert.Contains("CopyTimeout = TimeSpan.FromMilliseconds(350)", code);
+        TestAssert.False(code.Contains("WaitOne(90)", StringComparison.Ordinal));
+    }
+
+    private static void ClipboardFallbackPreservesTargetWindow()
+    {
+        var expected = new ForegroundWindowInfo(new IntPtr(10), 100, "source", null);
+        var same = new ForegroundWindowInfo(new IntPtr(10), 100, "source", null);
+        var different = new ForegroundWindowInfo(new IntPtr(11), 100, "source", null);
+
+        TestAssert.True(ForegroundWindowService.MatchesExpectedWindow(expected, same));
+        TestAssert.False(ForegroundWindowService.MatchesExpectedWindow(expected, different));
+        TestAssert.True(ForegroundWindowService.MatchesExpectedWindow(null, different));
     }
 
     private static string FindRepoFile(string relativePath)

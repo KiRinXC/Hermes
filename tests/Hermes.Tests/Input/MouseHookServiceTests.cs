@@ -9,6 +9,7 @@ public static class MouseHookServiceTests
     {
         suite.Add("mouse hook requires modifier before dragging but allows release in any order", RequiresModifierBeforeDraggingButAllowsReleaseOrder);
         suite.Add("mouse hook requires modifier already down at selection start", RequiresModifierAlreadyDownAtSelectionStart);
+        suite.Add("mouse hook rejects stale modifier state when key is not physically down", RejectsStaleModifierState);
         suite.Add("mouse hook supports alt gesture explain mode", SupportsAltGestureExplainMode);
     }
 
@@ -33,6 +34,19 @@ public static class MouseHookServiceTests
         TestAssert.True(MouseHookService.IsModifierTimingCompatible(mouseDownAt, mouseDownAt.AddMilliseconds(-120)));
         TestAssert.False(MouseHookService.IsModifierTimingCompatible(mouseDownAt, mouseDownAt.AddMilliseconds(60)));
         TestAssert.False(MouseHookService.IsModifierTimingCompatible(mouseDownAt, mouseDownAt.AddMilliseconds(260)));
+    }
+
+    private static void RejectsStaleModifierState()
+    {
+        TestAssert.False(MouseHookService.ShouldAcceptModifierAtSelectionStart(
+            physicallyDown: false,
+            trackedDownAtMouseDown: true));
+        TestAssert.False(MouseHookService.ShouldAcceptModifierAtSelectionStart(
+            physicallyDown: true,
+            trackedDownAtMouseDown: false));
+        TestAssert.True(MouseHookService.ShouldAcceptModifierAtSelectionStart(
+            physicallyDown: true,
+            trackedDownAtMouseDown: true));
     }
 
     private static void SupportsAltGestureExplainMode()

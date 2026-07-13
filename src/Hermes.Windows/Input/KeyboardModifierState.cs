@@ -17,16 +17,26 @@ internal static class KeyboardModifierState
     {
         return Volatile.Read(ref _leftCtrlDown) != 0
             || Volatile.Read(ref _rightCtrlDown) != 0
-            || IsKeyDown(NativeMethods.VkControl)
-            || IsKeyDown(NativeMethods.VkLControl)
-            || IsKeyDown(NativeMethods.VkRControl);
+            || IsCtrlPhysicallyDown();
     }
 
     public static bool IsAltDown()
     {
         return Volatile.Read(ref _leftAltDown) != 0
             || Volatile.Read(ref _rightAltDown) != 0
-            || IsKeyDown(NativeMethods.VkMenu)
+            || IsAltPhysicallyDown();
+    }
+
+    public static bool IsCtrlPhysicallyDown()
+    {
+        return IsKeyDown(NativeMethods.VkControl)
+            || IsKeyDown(NativeMethods.VkLControl)
+            || IsKeyDown(NativeMethods.VkRControl);
+    }
+
+    public static bool IsAltPhysicallyDown()
+    {
+        return IsKeyDown(NativeMethods.VkMenu)
             || IsKeyDown(NativeMethods.VkLMenu)
             || IsKeyDown(NativeMethods.VkRMenu);
     }

@@ -50,6 +50,23 @@ public sealed class ForegroundWindowService
             StringComparison.OrdinalIgnoreCase));
     }
 
+    internal static bool MatchesExpectedWindow(ForegroundWindowInfo? expected, ForegroundWindowInfo? actual)
+    {
+        if (expected is null)
+        {
+            return true;
+        }
+
+        if (actual is null)
+        {
+            return false;
+        }
+
+        return expected.Hwnd != IntPtr.Zero
+            ? expected.Hwnd == actual.Hwnd
+            : expected.ProcessId == actual.ProcessId;
+    }
+
     public bool IsFocusedElementSensitive()
     {
         try

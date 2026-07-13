@@ -192,13 +192,17 @@ public sealed class MouseHookService : IDisposable
 
     private static bool TryResolveGestureModeAtSelectionStart(long mouseDownMessageTimeMs, bool allowCurrentStateFallback, out TranslationMode mode)
     {
-        if (KeyboardModifierState.WasCtrlDownAt(mouseDownMessageTimeMs, ModifierStartTolerance, allowCurrentStateFallback))
+        if (ShouldAcceptModifierAtSelectionStart(
+                KeyboardModifierState.IsCtrlPhysicallyDown(),
+                KeyboardModifierState.WasCtrlDownAt(mouseDownMessageTimeMs, ModifierStartTolerance, allowCurrentStateFallback)))
         {
             mode = TranslationMode.Translate;
             return true;
         }
 
-        if (KeyboardModifierState.WasAltDownAt(mouseDownMessageTimeMs, ModifierStartTolerance, allowCurrentStateFallback))
+        if (ShouldAcceptModifierAtSelectionStart(
+                KeyboardModifierState.IsAltPhysicallyDown(),
+                KeyboardModifierState.WasAltDownAt(mouseDownMessageTimeMs, ModifierStartTolerance, allowCurrentStateFallback)))
         {
             mode = TranslationMode.Explain;
             return true;
@@ -206,6 +210,11 @@ public sealed class MouseHookService : IDisposable
 
         mode = TranslationMode.Translate;
         return false;
+    }
+
+    internal static bool ShouldAcceptModifierAtSelectionStart(bool physicallyDown, bool trackedDownAtMouseDown)
+    {
+        return physicallyDown && trackedDownAtMouseDown;
     }
 }
 

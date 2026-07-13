@@ -209,7 +209,9 @@ public sealed class TranslationCoordinator
             return;
         }
 
-        var (selection, validation) = await _selectionOrchestrator.ReadForExplicitTriggerAsync(cancellationToken);
+        var (selection, validation) = await _selectionOrchestrator.ReadForCandidateTriggerAsync(
+            candidate.ForegroundWindow,
+            cancellationToken);
         if (!selection.Success || !validation.IsValid)
         {
             popup.SetError(validation.Message ?? selection.Message ?? "没有检测到可翻译文本。可以复制文本后再试。", showSettings: false);

@@ -1,12 +1,32 @@
 param(
-    [string]$DotnetRoot = "C:\Code\Env\dotnet",
+    [string]$DotnetRoot = $env:HERMES_DOTNET_ROOT,
     [switch]$UseLocalProxy,
     [string]$ProxyUrl = "http://127.0.0.1:7890"
 )
 
 $ErrorActionPreference = "Stop"
 
+if ([string]::IsNullOrWhiteSpace($DotnetRoot)) {
+    $dotnetCandidates = @(
+        "C:\Code\Env\dotnet",
+        "D:\Code\Env\dotnet"
+    )
+
+    $dotnetCommand = Get-Command dotnet.exe -ErrorAction SilentlyContinue
+    if ($null -ne $dotnetCommand) {
+        $dotnetCandidates += Split-Path -Parent $dotnetCommand.Source
+    }
+
+    $DotnetRoot = $dotnetCandidates |
+        Where-Object { Test-Path (Join-Path $_ "dotnet.exe") } |
+        Select-Object -First 1
+}
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+if ([string]::IsNullOrWhiteSpace($DotnetRoot)) {
+    throw "dotnet.exe was not found. Set HERMES_DOTNET_ROOT or install the configured workspace SDK."
+}
+
 $dotnetExe = Join-Path $DotnetRoot "dotnet.exe"
 if (-not (Test-Path $dotnetExe)) {
     throw "dotnet.exe was not found at $dotnetExe"
