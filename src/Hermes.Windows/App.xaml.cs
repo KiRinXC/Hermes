@@ -1,5 +1,8 @@
 ﻿using System.Net.Http;
 using System.Windows;
+using Hermes.Windows.Apps;
+using Hermes.Windows.Apps.CodexAuthSwitchSync;
+using Hermes.Windows.Apps.CodexAuthSwitchSync.Services;
 using Hermes.Windows.History;
 using Hermes.Windows.Infrastructure;
 using Hermes.Windows.Input;
@@ -32,6 +35,7 @@ public partial class App : System.Windows.Application
     private TranslationHistoryService? _historyService;
     private ITranslationService? _translationService;
     private TriggerDiagnosticsService? _triggerDiagnosticsService;
+    private AppRegistry? _appRegistry;
     private SettingsWindow? _settingsWindow;
     private bool _paused;
 
@@ -83,6 +87,19 @@ public partial class App : System.Windows.Application
         _secretStorage = new DpapiSecretStorageService(_logger);
         _startupRegistrationService = new StartupRegistrationService(_logger);
         _startupRegistrationService.SetLaunchAtSignIn(_settingsService.Current.Startup.LaunchAtSignIn);
+
+        var codexLocations = new CodexLocations();
+        var codexProfiles = new CodexProfileStore(codexLocations);
+        var codexSessions = new CodexSessionSyncService(codexLocations);
+        var codexProcessGuard = new CodexProcessGuard();
+        var codexService = new CodexAuthSwitchService(
+            codexLocations,
+            codexProfiles,
+            codexSessions,
+            codexProcessGuard,
+            _logger);
+        _appRegistry = new AppRegistry();
+        _appRegistry.Register(new CodexAuthSwitchSyncApp(codexService));
 
         var foregroundWindowService = new ForegroundWindowService(_settingsService);
         var uiAutomationProvider = new UiAutomationSelectionProvider(foregroundWindowService, _logger);
@@ -257,6 +274,7 @@ public partial class App : System.Windows.Application
             || _startupRegistrationService is null
             || _historyService is null
             || _triggerDiagnosticsService is null
+            || _appRegistry is null
             || _logger is null)
         {
             return;
@@ -271,6 +289,7 @@ public partial class App : System.Windows.Application
                 _startupRegistrationService,
                 _historyService,
                 _triggerDiagnosticsService,
+                _appRegistry,
                 _logger);
             _settingsWindow.Closed += (_, _) => _settingsWindow = null;
         }

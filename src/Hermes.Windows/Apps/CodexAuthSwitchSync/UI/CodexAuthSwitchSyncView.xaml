@@ -1,0 +1,344 @@
+<UserControl x:Class="Hermes.Windows.Apps.CodexAuthSwitchSync.UI.CodexAuthSwitchSyncView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="Transparent">
+    <UserControl.Resources>
+        <Style x:Key="Codex.StatusPill" TargetType="{x:Type Border}">
+            <Setter Property="Background" Value="{DynamicResource Settings.ControlBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Settings.BorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="Padding" Value="9,3"/>
+        </Style>
+        <Style x:Key="Codex.MetricCard" TargetType="{x:Type Border}">
+            <Setter Property="Background" Value="{DynamicResource Settings.ControlBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Settings.BorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="7"/>
+            <Setter Property="Padding" Value="12"/>
+        </Style>
+        <Style x:Key="Codex.MetricValue" TargetType="{x:Type TextBlock}">
+            <Setter Property="Foreground" Value="{DynamicResource Settings.TextPrimaryBrush}"/>
+            <Setter Property="FontSize" Value="20"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="24,14,24,14">
+                <Border x:Name="ProcessWarning"
+                        Style="{DynamicResource Settings.GroupCard}"
+                        BorderBrush="{DynamicResource Settings.WarningBrush}"
+                        Visibility="Collapsed">
+                    <DockPanel LastChildFill="True">
+                        <Viewbox DockPanel.Dock="Left" Width="17" Height="17" Margin="0,1,12,0">
+                            <Path Stroke="{DynamicResource Settings.WarningBrush}"
+                                  StrokeThickness="1.5"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round"
+                                  Data="M8,1 L15,14 L1,14 Z M8,5 L8,9 M8,12 L8,12.1"/>
+                        </Viewbox>
+                        <TextBlock x:Name="ProcessWarningText"
+                                   Style="{DynamicResource Settings.Helper}"
+                                   Foreground="{DynamicResource Settings.WarningBrush}"/>
+                    </DockPanel>
+                </Border>
+
+                <Border Style="{DynamicResource Settings.GroupCard}">
+                    <StackPanel>
+                        <DockPanel LastChildFill="True">
+                            <Button DockPanel.Dock="Right"
+                                    Style="{DynamicResource Settings.GhostIconButton}"
+                                    MinWidth="72"
+                                    Click="Refresh_Click"
+                                    AutomationProperties.Name="刷新 Codex 状态">
+                                <StackPanel Orientation="Horizontal">
+                                    <Path Width="11"
+                                          Height="11"
+                                          Margin="0,0,8,0"
+                                          Stroke="{DynamicResource Settings.TextMutedBrush}"
+                                          StrokeThickness="1.4"
+                                          StrokeStartLineCap="Round"
+                                          StrokeEndLineCap="Round"
+                                          Data="M11,2 L11,6 L7,6 M11,6 C10,3.5 7.8,2 5.5,2 C2.5,2 0,4.5 0,7.5 C0,10.5 2.5,13 5.5,13 C7.2,13 8.8,12.2 9.8,11"/>
+                                    <TextBlock Text="刷新"/>
+                                </StackPanel>
+                            </Button>
+                            <TextBlock Text="当前 Codex"
+                                       Style="{DynamicResource Settings.CardTitle}"
+                                       VerticalAlignment="Center"/>
+                        </DockPanel>
+
+                        <Grid Margin="0,14,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="认证方式" Style="{DynamicResource Settings.Helper}"/>
+                                <TextBlock x:Name="CurrentModeText" Margin="0,4,0,0" Style="{DynamicResource Settings.Label}"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="Provider" Style="{DynamicResource Settings.Helper}"/>
+                                <TextBlock x:Name="CurrentProviderText" Margin="0,4,0,0" Style="{DynamicResource Settings.Label}"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="习惯模式" Style="{DynamicResource Settings.Helper}"/>
+                                <TextBlock x:Name="CurrentHabitText" Margin="0,4,0,0" Style="{DynamicResource Settings.Label}"/>
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="14"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Border Style="{DynamicResource Settings.GroupCard}">
+                        <StackPanel>
+                            <DockPanel>
+                                <Border x:Name="ChatGptBadge" DockPanel.Dock="Right" Style="{StaticResource Codex.StatusPill}">
+                                    <TextBlock x:Name="ChatGptBadgeText" Style="{DynamicResource Settings.Helper}"/>
+                                </Border>
+                                <TextBlock Text="ChatGPT 登录" Style="{DynamicResource Settings.CardTitle}"/>
+                            </DockPanel>
+                            <TextBlock x:Name="ChatGptProfileText"
+                                       Style="{DynamicResource Settings.Helper}"
+                                       Margin="0,10,0,14"/>
+                            <StackPanel Orientation="Horizontal">
+                                <Button x:Name="SwitchChatGptButton"
+                                        Style="{DynamicResource Settings.PrimaryButton}"
+                                        Click="SwitchChatGpt_Click"
+                                        AutomationProperties.Name="切换到 ChatGPT 认证">
+                                    <TextBlock Text="切换到 ChatGPT"/>
+                                </Button>
+                                <Button x:Name="CaptureChatGptButton"
+                                        Style="{DynamicResource Settings.FooterButton}"
+                                        Margin="8,0,0,0"
+                                        Click="CaptureChatGpt_Click"
+                                        AutomationProperties.Name="保存当前 ChatGPT 登录">
+                                    <TextBlock x:Name="CaptureChatGptButtonText" Text="保存当前登录"/>
+                                </Button>
+                                <Button x:Name="LoginChatGptButton"
+                                        Style="{DynamicResource Settings.FooterButton}"
+                                        Margin="8,0,0,0"
+                                        Click="LoginChatGpt_Click"
+                                        ToolTip="调用 Codex 官方登录流程并在浏览器中完成 ChatGPT 认证"
+                                        AutomationProperties.Name="在浏览器中登录 ChatGPT">
+                                    <TextBlock x:Name="LoginChatGptButtonText" Text="浏览器登录"/>
+                                </Button>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Column="2" Style="{DynamicResource Settings.GroupCard}">
+                        <StackPanel>
+                            <DockPanel>
+                                <Border x:Name="ApiBadge" DockPanel.Dock="Right" Style="{StaticResource Codex.StatusPill}">
+                                    <TextBlock x:Name="ApiBadgeText" Style="{DynamicResource Settings.Helper}"/>
+                                </Border>
+                                <TextBlock Text="API 登录" Style="{DynamicResource Settings.CardTitle}"/>
+                            </DockPanel>
+                            <TextBlock x:Name="ApiProfileText"
+                                       Style="{DynamicResource Settings.Helper}"
+                                       Margin="0,10,0,14"/>
+                            <StackPanel Orientation="Horizontal">
+                                <Button x:Name="SwitchApiButton"
+                                        Style="{DynamicResource Settings.PrimaryButton}"
+                                        Click="SwitchApi_Click"
+                                        AutomationProperties.Name="切换到 API 认证">
+                                    <TextBlock Text="切换到 API"/>
+                                </Button>
+                                <Button x:Name="ConfigureApiButton"
+                                        Style="{DynamicResource Settings.FooterButton}"
+                                        Margin="8,0,0,0"
+                                        Click="ConfigureApi_Click"
+                                        AutomationProperties.Name="配置 API 登录">
+                                    <TextBlock x:Name="ConfigureApiButtonText" Text="配置"/>
+                                </Button>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <Border x:Name="ApiEditor"
+                        Style="{DynamicResource Settings.GroupCard}"
+                        Visibility="Collapsed">
+                    <StackPanel>
+                        <TextBlock Text="config.toml" Style="{DynamicResource Settings.Label}"/>
+                        <TextBox x:Name="ApiConfigTomlText"
+                                 Height="164"
+                                 Margin="0,7,0,0"
+                                 MaxLength="1048576"
+                                 Padding="10,8"
+                                 AcceptsReturn="True"
+                                 TextWrapping="NoWrap"
+                                 VerticalContentAlignment="Top"
+                                 HorizontalScrollBarVisibility="Auto"
+                                 VerticalScrollBarVisibility="Auto"
+                                 FontFamily="Consolas"
+                                 FontSize="12"
+                                 SpellCheck.IsEnabled="False"
+                                 Style="{DynamicResource Settings.TextBox}"
+                                 AutomationProperties.Name="Codex API config.toml 内容"/>
+
+                        <TextBlock Text="auth.json"
+                                   Style="{DynamicResource Settings.Label}"
+                                   Margin="0,12,0,0"/>
+                        <TextBox x:Name="ApiAuthJsonText"
+                                 Height="104"
+                                 Margin="0,7,0,0"
+                                 MaxLength="1048576"
+                                 Padding="10,8"
+                                 AcceptsReturn="True"
+                                 TextWrapping="NoWrap"
+                                 VerticalContentAlignment="Top"
+                                 HorizontalScrollBarVisibility="Auto"
+                                 VerticalScrollBarVisibility="Auto"
+                                 FontFamily="Consolas"
+                                 FontSize="12"
+                                 IsUndoEnabled="False"
+                                 SpellCheck.IsEnabled="False"
+                                 Style="{DynamicResource Settings.TextBox}"
+                                 AutomationProperties.Name="Codex API auth.json 内容"/>
+                        <TextBlock x:Name="ApiEditorErrorText"
+                                   Style="{DynamicResource Settings.Helper}"
+                                   Foreground="{DynamicResource Settings.WarningBrush}"
+                                   Margin="0,8,0,0"
+                                   Visibility="Collapsed"/>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{DynamicResource Settings.GroupCard}">
+                    <StackPanel>
+                        <DockPanel LastChildFill="True">
+                            <Button x:Name="SyncButton"
+                                    DockPanel.Dock="Right"
+                                    Style="{DynamicResource Settings.PrimaryButton}"
+                                    Click="Sync_Click"
+                                    AutomationProperties.Name="同步当前 Codex 会话">
+                                <TextBlock Text="同步当前会话"/>
+                            </Button>
+                            <StackPanel>
+                                <TextBlock Text="本地会话一致性" Style="{DynamicResource Settings.CardTitle}"/>
+                                <TextBlock x:Name="HistoryStatusText"
+                                           Style="{DynamicResource Settings.Helper}"
+                                           Margin="0,5,18,0"/>
+                            </StackPanel>
+                        </DockPanel>
+                        <Grid Margin="0,14,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Background="{DynamicResource Settings.ControlBrush}" CornerRadius="7" Padding="12">
+                                <StackPanel>
+                                    <TextBlock Text="Rollout 文件" Style="{DynamicResource Settings.Helper}"/>
+                                    <TextBlock x:Name="RolloutCountText" Margin="0,4,0,0" Style="{DynamicResource Settings.Label}"/>
+                                </StackPanel>
+                            </Border>
+                            <Border Grid.Column="1" Margin="10,0,0,0" Background="{DynamicResource Settings.ControlBrush}" CornerRadius="7" Padding="12">
+                                <StackPanel>
+                                    <TextBlock Text="SQLite 索引" Style="{DynamicResource Settings.Helper}"/>
+                                    <TextBlock x:Name="SqliteCountText" Margin="0,4,0,0" Style="{DynamicResource Settings.Label}"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+                        <TextBlock Text="会话构成"
+                                   Style="{DynamicResource Settings.CardTitle}"
+                                   Margin="0,16,0,0"/>
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="10"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="10"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="10"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Style="{StaticResource Codex.MetricCard}">
+                                <StackPanel>
+                                    <TextBlock x:Name="SessionTotalText"
+                                               Style="{StaticResource Codex.MetricValue}"
+                                               AutomationProperties.Name="本地会话总数"/>
+                                    <TextBlock Text="全部 Rollout" Style="{DynamicResource Settings.Label}" Margin="0,4,0,0"/>
+                                </StackPanel>
+                            </Border>
+                            <Border Grid.Column="2" Style="{StaticResource Codex.MetricCard}">
+                                <StackPanel>
+                                    <TextBlock x:Name="RegularSessionCountText"
+                                               Style="{StaticResource Codex.MetricValue}"
+                                               AutomationProperties.Name="常规会话数"/>
+                                    <TextBlock Text="常规会话" Style="{DynamicResource Settings.Label}" Margin="0,4,0,0"/>
+                                    <TextBlock Text="通常显示在历史列表" Style="{DynamicResource Settings.Helper}" Margin="0,2,0,0"/>
+                                </StackPanel>
+                            </Border>
+                            <Border Grid.Column="4" Style="{StaticResource Codex.MetricCard}">
+                                <StackPanel>
+                                    <TextBlock x:Name="InternalSessionCountText"
+                                               Style="{StaticResource Codex.MetricValue}"
+                                               AutomationProperties.Name="内部子代理会话数"/>
+                                    <TextBlock Text="内部子代理" Style="{DynamicResource Settings.Label}" Margin="0,4,0,0"/>
+                                    <TextBlock Text="历史列表默认隐藏" Style="{DynamicResource Settings.Helper}" Margin="0,2,0,0"/>
+                                </StackPanel>
+                            </Border>
+                            <Border Grid.Column="6" Style="{StaticResource Codex.MetricCard}">
+                                <StackPanel>
+                                    <TextBlock x:Name="ArchivedSessionCountText"
+                                               Style="{StaticResource Codex.MetricValue}"
+                                               AutomationProperties.Name="已归档会话数"/>
+                                    <TextBlock Text="已归档" Style="{DynamicResource Settings.Label}" Margin="0,4,0,0"/>
+                                    <TextBlock Text="活动历史中不显示" Style="{DynamicResource Settings.Helper}" Margin="0,2,0,0"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+                        <TextBlock Text="只同步本机 Provider 元数据，不上传会话。"
+                                   Style="{DynamicResource Settings.Helper}"
+                                   Margin="0,12,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <Border x:Name="OperationStatusBorder"
+                        Style="{DynamicResource Settings.GroupCard}"
+                        Visibility="Collapsed">
+                    <DockPanel LastChildFill="True">
+                        <ProgressBar x:Name="OperationProgress"
+                                     DockPanel.Dock="Left"
+                                     Width="72"
+                                     Height="3"
+                                     Margin="0,7,12,0"
+                                     IsIndeterminate="True"/>
+                        <TextBlock x:Name="OperationStatusText"
+                                   Style="{DynamicResource Settings.Helper}"/>
+                    </DockPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <Border x:Name="BusyOverlay" Background="#66000000" Visibility="Collapsed">
+            <Border Width="276"
+                    Padding="18"
+                    CornerRadius="10"
+                    Background="{DynamicResource Settings.ShellBrush}"
+                    BorderBrush="{DynamicResource Settings.BorderBrush}"
+                    BorderThickness="1"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center">
+                <StackPanel>
+                    <ProgressBar Height="3" IsIndeterminate="True"/>
+                    <TextBlock x:Name="BusyText"
+                               Margin="0,12,0,0"
+                               TextAlignment="Center"
+                               AutomationProperties.LiveSetting="Polite"
+                               Style="{DynamicResource Settings.Label}"/>
+                </StackPanel>
+            </Border>
+        </Border>
+    </Grid>
+</UserControl>

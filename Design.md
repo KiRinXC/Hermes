@@ -28,6 +28,8 @@ Hermes
 ├─ src/
 │  └─ Hermes.Windows/
 │     ├─ App.xaml / App.xaml.cs
+│     ├─ Apps/                       # 可扩展内置小应用注册表、应用中心和独立实现
+│     │  └─ CodexAuthSwitchSync/     # Codex 认证档案切换与本地会话同步
 │     ├─ Shell/
 │     ├─ Tray/
 │     ├─ Input/
@@ -56,6 +58,7 @@ Hermes
 - 启用单实例守卫，重复启动时激活已有实例。
 - 加载设置并应用主题。
 - 初始化 DPAPI 密钥存储、日志、历史、翻译服务、选区服务、悬浮层服务。
+- 创建 `AppRegistry` 并注册内置 `codex-auth-switch-sync` 应用；应用服务仍由组合根显式装配。
 - 注册托盘菜单，并在启动通知显示后延迟注册全局快捷键、键盘 hook 和鼠标 hook，降低应用刚启动时 UI 线程忙碌造成的鼠标卡顿。
 - 根据暂停状态和设置控制触发器启动或停止。
 
@@ -125,17 +128,46 @@ ClipboardSelectionProvider 读取当前剪贴板文本
 
 显式选区读取的受控复制不会直接信任剪贴板当前文本。Hermes 会先记住候选产生时的前台窗口，在复制前再次核对窗口句柄；随后暂存原剪贴板、写入 Hermes 私有探针、发送 `Ctrl+C`，并在最多 350ms 内等待剪贴板序列号变化且探针被新数据替换。只有满足这些条件的新文本才会进入翻译，超时、窗口变化或复制无文本都会明确失败，最后统一恢复原剪贴板。该协议避免悬浮按钮误读其他窗口或把此前复制的残留文本当成本次选区。
 
+### Codex 认证切换与本地会话同步
+
+```text
+用户在最右侧“应用 → Codex 认证管理”选择目标认证
+  ↓
+检查 Codex / ChatGPT / CLI / IDE Codex 进程已退出
+  ↓
+只刷新当前档案的 auth（保留 OAuth token 更新，不反存合并后的共享 config）
+  ↓
+DPAPI 加密备份当前 config + auth、rollout 首行和权威 SQLite
+  ↓
+以当前 config.toml 为基础递归合并目标配置，再原子写入合并结果；auth.json 整体替换
+  ↓
+把 sessions / archived_sessions 的 session_meta.model_provider
+和权威 state_5.sqlite 的 threads.model_provider 对齐到目标 Provider
+  ↓
+读回 rollout 与 SQLite 计数；零错配才提交，否则回滚
+```
+
+当电脑尚未建立 ChatGPT 档案时，用户也可选择“浏览器登录”：Hermes 先刷新并加密保存当前 API auth、备份活动 config/auth，然后以当前 config 为基础合并 `model_provider = "openai"` 与 `cli_auth_credentials_store = "file"`，清除不属于 ChatGPT 的旧认证路由，并暂时移除活动 auth。随后在同一 `%CODEX_HOME%` 下启动官方 `codex login`，由 Codex 打开系统浏览器完成 ChatGPT 认证。进程成功结束后，Hermes 必须确认新 `auth.json` 可识别为 ChatGPT，才加密保存 ChatGPT 档案并执行同一套 rollout/SQLite Provider 同步；登录取消、超时、认证类型错误或后续同步失败时恢复进入流程前的 config/auth。CLI 查找顺序为 PATH 中的原生可执行文件、npm 包携带的原生可执行文件、常见编辑器中的官方 Codex 扩展，最后回退到 PATH 中的 `codex.cmd`；登录进程输出不进入 Hermes 日志。
+
+ChatGPT 与 API 档案都以 DPAPI 保存各自的 `config.toml` 模板和完整 `auth.json`。API 配置采用完整档案编辑：用户直接粘贴或修改中转站提供的两份文件内容，Hermes 要求 `config.toml` 根配置显式包含 `model_provider`，除此之外不改写模型、推理等级、地址、Provider 定义或其他字段；`auth.json` 接受任意非空 API 凭据对象，但拒绝 ChatGPT token 档案。切换时遵循 Codex 配置层的递归合并语义：当前用户配置作为基础，目标模板中的同路径标量/数组整体替换、表递归合并、新键加入，目标没有的 MCP、插件、项目、Feature 和其他配置继续保留。`model_provider` 始终以目标模板为准；目标未声明的旧认证路由项（例如 `forced_login_method`、`openai_base_url`）会清除，防止跨登录方式串用。当前档案只刷新 auth，不再把合并后的完整 config 反存成 Profile，避免旧 MCP/插件快照在下一轮切换时回灌。再次编辑时回填档案 config，并将 DPAPI 档案中的 auth 仅在本次编辑会话内解密回显；编辑框禁用撤销历史，并在统一保存、返回应用列表或关闭设置窗口时清空。配置编辑通过 `ISettingsSaveParticipant` 接入设置窗口右下角统一保存：若当前为 API，保存前要求 Codex 客户端退出，然后先备份活动 config/auth 和旧 API Profile，以活动 config 为基础合并新模板、整体更新 auth、对齐会话 Provider，任一步失败都恢复活动文件和旧 Profile；若当前不是 API，则只更新加密档案，留待下次切换。Provider 标识在 rollout、状态统计和 SQLite 同步中始终按大小写严格匹配；SQLite 查询显式使用 `BINARY`，不依赖数据库列的默认排序规则。同步不复制或上传完整会话内容，而是修正同一 `%CODEX_HOME%` 中的本地 Provider 元数据。权威状态库只从配置的 `sqlite_home/state_5.sqlite`、`sqlite/state_5.sqlite`、根目录 `state_5.sqlite` 中择优选择，明确不修改 `codex-dev.db` 一类辅助目录。状态页在同一次 rollout 首行扫描中按常规会话、内部子代理与已归档三类展示会话构成；无法解析的活动记录计入本地总数但不额外显示加法说明，不读取会话正文。
+
 ## 模块说明
 
 ### Shell
 
-`Shell/SettingsWindow` 是设置入口，负责 API、翻译、触发、UI、隐私、开机启动等配置的展示和保存。设置窗口由托盘菜单或翻译卡片中的设置动作打开。
+`Shell/SettingsWindow` 是设置入口，负责 API、翻译、触发、UI、隐私、内置应用、开机启动等配置的展示和保存。设置窗口由托盘菜单或翻译卡片中的设置动作打开。
 
-当前设置窗口默认 `800 × 600`，采用无边框 WPF 壳，窗口内部按 Header、Body、Footer 三段式组织。Header 包含紧凑品牌区、可点击录制的快捷键键帽和五个文字页签；页签与应用图标保持更舒展的垂直间距，外层壳体不再使用会被透明窗口裁切成黑框的外边距阴影。Body 使用圆角分组卡片承载常规、翻译、外观、隐私和高级诊断；Footer 固定放置保存和状态反馈。设置窗口文字层级以 Regular/Medium 为主，不使用 Bold/SemiBold 作为常规 UI 字重。窗口打开时执行淡入与缩放动效；为保证透明无边框窗口四角干净，设置窗不再启用矩形 DWM/Mica 背景，而由本地壳体背景和运行时圆角裁剪承载视觉外观。虽然窗口视觉上保持无边框，但边缘和四角通过 `WM_NCHITTEST` 恢复原生拖拽缩放手感，用户调整后的宽高会自动写入设置并作为下次默认尺寸。
+当前设置窗口默认 `800 × 600`，采用无边框 WPF 壳，窗口内部按 Header、Body、Footer 三段式组织。Header 包含紧凑品牌区、可点击录制的快捷键键帽和五个文字页签，固定顺序为“常规、翻译、外观、高级、应用”；隐私设置作为常规行为的一部分并入“常规”，应用中心位于最右侧。页签与应用图标保持更舒展的垂直间距，外层壳体不再使用会被透明窗口裁切成黑框的外边距阴影。Body 使用圆角分组卡片承载常规与隐私、翻译、外观、高级诊断和应用；页签已明确主题且页面只有单一卡片时，不再重复设置同义卡片标题。辅助小字仅用于动态状态、错误恢复、隐私边界和非直观行为，不复述已经清晰的控件名称；OpenAI 翻译通道改用可见开关标签表达，必要状态继续在字段附近动态反馈。Footer 固定放置保存和状态反馈。设置窗口文字层级以 Regular/Medium 为主，不使用 Bold/SemiBold 作为常规 UI 字重。窗口打开时执行淡入与缩放动效；为保证透明无边框窗口四角干净，设置窗不再启用矩形 DWM/Mica 背景，而由本地壳体背景和运行时圆角裁剪承载视觉外观。虽然窗口视觉上保持无边框，但边缘和四角通过 `WM_NCHITTEST` 恢复原生拖拽缩放手感，用户调整后的宽高会自动写入设置并作为下次默认尺寸。
 
-设置页控件已从传统表单升级为更轻量的交互形态：布尔项使用设置页本地 ToggleSwitch，外观规格使用 Slider，主题使用分段选择器，API Key 支持显示/隐藏，右上角键帽按钮支持录制组合键。主题分段选择器的轨道、选中胶囊和描边都使用本地动态主题资源，浅色模式下以灰色轨道、白色选中胶囊和细描边明确当前选项。鼠标点击页签切换设置分区后，会在内容加载完成时清掉 WPF 自动落到第一个开关上的焦点，避免隐私页“保存翻译历史”等 ToggleSwitch 出现误导性的蓝色焦点框；键盘导航路径仍保留可见焦点。键帽按钮整体背景和代码生成的单个键帽都使用动态主题资源，浅色模式下会立即切换为浅灰外壳和浅色键帽；进入录制后再次点击按钮、点击窗口其它区域或按 Esc 会取消录制并清掉蓝色焦点框，录制过程不再写入 Footer 状态提示。测试连接作为 API 凭据上下文动作放在 API Key 行右侧，清空历史作为高级诊断上下文动作放在高级页内。翻译页的模型字段保持为手动输入框，避免模型选择控件在紧凑布局中截断；目标语言固定为中文，不再在设置页展示。翻译页还提供可编辑的系统 Prompt，空白时回退到默认英文到简体中文翻译提示词。外观页提供“气球样式”下拉项、“图标大小”五点横向选择器和“浮窗字号”五点横向选择器：图标大小从左到右对应超小到超大，两端使用透明背景的真实悬浮按钮图标预览尺度，并随当前浅色/深色主题切换 light/dark 图标；浮窗字号从左到右对应五档真实字号，两端用固定画布的矢量 `A` 图标直接显示最小和最大字号，避免字体基线影响端点对齐；两个五点控件共用对齐后的轨道几何，不再显示额外档位文字。外观页不再提供翻译卡片默认宽高控件，卡片尺寸由用户直接拉伸卡片后自动记忆。设置窗口内置本地 TextBox、PasswordBox、ComboBox、ComboBoxItem、FooterButton、Tab、ToggleSwitch、Slider 和滚动条样式，避免设置页回落到原生控件质感。`SettingsWindowOptions` 用于分离设置项显示文案和持久化值，避免中文高级文案写入配置文件。`SettingsWindowThemePalettes` 负责设置窗口自身的浅色/深色调色板，外观页切换主题时会替换本地 brush 资源；设置窗口样式使用 DynamicResource 引用这些 brush，因此浅色/深色/跟随系统会立即作用于设置窗口自身。浅色主题下开关关闭轨道、滑块未选轨道、滚动条滑块和快捷键键帽使用可读灰阶，避免黑色控件在浅色面板中过重或不可见。
+设置页控件已从传统表单升级为更轻量的交互形态：布尔项使用设置页本地 ToggleSwitch，外观规格使用 Slider，主题使用分段选择器，API Key 支持显示/隐藏，右上角键帽按钮支持录制组合键。主题分段选择器的轨道、选中胶囊和描边都使用本地动态主题资源，浅色模式下以灰色轨道、白色选中胶囊和细描边明确当前选项。鼠标点击页签切换设置分区后，会在内容加载完成时清掉 WPF 自动落到第一个开关上的焦点，避免页面首个 ToggleSwitch 出现误导性的蓝色焦点框；键盘导航路径仍保留可见焦点。键帽按钮整体背景和代码生成的单个键帽都使用动态主题资源，浅色模式下会立即切换为浅灰外壳和浅色键帽；进入录制后再次点击按钮、点击窗口其它区域或按 Esc 会取消录制并清掉蓝色焦点框，录制过程不再写入 Footer 状态提示。测试连接作为 API 凭据上下文动作放在 API Key 行右侧，清空历史作为高级诊断上下文动作放在高级页内。翻译页的模型字段保持为手动输入框，避免模型选择控件在紧凑布局中截断；目标语言固定为中文，不再在设置页展示。翻译页还提供可编辑的系统 Prompt，空白时回退到默认英文到简体中文翻译提示词。外观页提供“气球样式”下拉项、“图标大小”五点横向选择器和“浮窗字号”五点横向选择器：图标大小从左到右对应超小到超大，两端使用透明背景的真实悬浮按钮图标预览尺度，并随当前浅色/深色主题切换 light/dark 图标；浮窗字号从左到右对应五档真实字号，两端用固定画布的矢量 `A` 图标直接显示最小和最大字号，避免字体基线影响端点对齐；两个五点控件共用对齐后的轨道几何，不再显示额外档位文字。外观页不再提供翻译卡片默认宽高控件，卡片尺寸由用户直接拉伸卡片后自动记忆。设置窗口内置本地 TextBox、PasswordBox、ComboBox、ComboBoxItem、FooterButton、Tab、ToggleSwitch、Slider 和滚动条样式，避免设置页回落到原生控件质感。`SettingsWindowOptions` 用于分离设置项显示文案和持久化值，避免中文高级文案写入配置文件。`SettingsWindowThemePalettes` 负责设置窗口自身的浅色/深色调色板，外观页切换主题时会替换本地 brush 资源；设置窗口样式使用 DynamicResource 引用这些 brush，因此浅色/深色/跟随系统会立即作用于设置窗口自身。浅色主题下开关关闭轨道、滑块未选轨道、滚动条滑块和快捷键键帽使用可读灰阶，避免黑色控件在浅色面板中过重或不可见。
 
 浮窗字号当前提供 `12 / 14 / 16 / 18 / 20` 五档，默认值为 `16`；`TranslationPopupWindow` 会将设置值限制在 12 到 20 之间，并同时应用到译文正文和原文预览。
+
+### Apps
+
+`Apps/AppRegistry` 是 Hermes 内置小应用的注册入口，`Apps/AppsCenterView` 在设置页中提供列表与详情两级导航。每个应用实现 `IHermesApp`，拥有稳定 ID、矢量图标、名称、说明和可复用视图；应用自己的文件、服务和 UI 放在 `Apps/<AppName>/` 内，避免未来多个工具继续堆进 Shell。
+
+`Apps/CodexAuthSwitchSync` 是首个内置应用，ID 固定为 `codex-auth-switch-sync`。它负责：识别 ChatGPT/API auth；通过官方 `codex login` 启动系统浏览器初始化或刷新 ChatGPT 认证；以当前 Windows 用户 DPAPI 加密两套配置模板与完整凭据；导入并校验任意中转站提供的 API config/auth；按 Codex 的递归配置层语义合并目标模板并保留当前共享配置；切换、浏览器登录以及活动 API 配置应用前拦截仍运行的 Codex 客户端；以原子文件写和 SQLite 事务同步本地会话；失败时恢复 config、auth、Profile、rollout 首行和数据库；解释 rollout 总数与用户可见历史数之间的常规会话、内部子代理、已归档构成。认证卡片的操作区按活动认证和档案存在状态动态裁剪，每张卡最多展示两个有效动作，隐藏“切换到当前认证”等无效入口，并动态指定唯一主操作，避免窄卡片自动换行。切换、登录和同步统一通过 `IHermesConfirmationHost` 使用设置窗口内确认层，不创建系统 MessageBox。备份仅保留最近五次。
 
 ### Tray
 
@@ -196,7 +228,7 @@ ClipboardSelectionProvider 读取当前剪贴板文本
 
 ### Infrastructure
 
-基础设施模块包括日志、路径、Win32 方法、应用身份、单实例守卫和日志脱敏。用户数据目录统一为 `%LOCALAPPDATA%\Hermes\`，并保留从旧目录迁移数据的兼容逻辑。
+基础设施模块包括日志、路径、Win32 方法、应用身份、单实例守卫和日志脱敏。用户数据目录统一为 `%LOCALAPPDATA%\Hermes\`，并保留从旧目录迁移数据的兼容逻辑。内置应用的数据使用 `%LOCALAPPDATA%\Hermes\apps\<app-id>\` 子目录隔离。
 
 ### UI/Themes
 
@@ -204,7 +236,7 @@ ClipboardSelectionProvider 读取当前剪贴板文本
 
 ### Tests
 
-`tests/Hermes.Tests` 是轻量控制台测试套件，覆盖设置、脱敏、选区校验、选择候选、UI Automation 预读失败/超时手势兜底、受控剪贴板新鲜度与目标窗口约束、被动路径敏感控件检查时间盒、快捷键解析、鼠标 Ctrl/Alt 起手物理键与 hook 双重门控、启动触发器延迟注册、启动通知点击设置、设置窗口选项文案和值映射、设置/弹窗边缘缩放与尺寸持久化约束、外观页悬浮按钮五点尺寸选择器对齐与主题预览、外观页浮窗字号五点选择器、设置/弹窗滚动条主题样式、通知点击后的设置窗抬前逻辑、历史/诊断清理、OpenAI 与 Transmart 响应解析、加载态通道显示、悬浮按钮清晰度和去重约束、翻译卡片拖拽/外部点击关闭入口、多卡片事件隔离约束、弹窗 Markdown 渲染回归和 UI 字重约束等逻辑。WPF 可视交互仍需要真实应用试用补充验证。
+`tests/Hermes.Tests` 是轻量控制台测试套件，覆盖设置、脱敏、选区校验、选择候选、UI Automation 预读失败/超时手势兜底、受控剪贴板新鲜度与目标窗口约束、被动路径敏感控件检查时间盒、快捷键解析、鼠标 Ctrl/Alt 起手物理键与 hook 双重门控、启动触发器延迟注册、启动通知点击设置、设置窗口选项文案和值映射、设置/弹窗边缘缩放与尺寸持久化约束、外观页悬浮按钮五点尺寸选择器对齐与主题预览、外观页浮窗字号五点选择器、设置/弹窗滚动条主题样式、通知点击后的设置窗抬前逻辑、历史/诊断清理、OpenAI 与 Transmart 响应解析、加载态通道显示、悬浮按钮清晰度和去重约束、翻译卡片拖拽/外部点击关闭入口、多卡片事件隔离约束、弹窗 Markdown 渲染回归、UI 字重约束，以及 Apps 注册表、Codex TOML/auth 识别、配置递归合并、浏览器登录配置与 CLI 定位、认证路由清理、rollout + 权威 SQLite 同步和应用界面隐私标签等逻辑。WPF 可视交互和真实浏览器 OAuth 仍需要真实应用试用补充验证。
 
 ## 打包策略
 
@@ -212,7 +244,7 @@ ClipboardSelectionProvider 读取当前剪贴板文本
 
 - `global.json` 指定 .NET SDK `10.0.300`。
 - `NuGet.Config` 使用 `.nuget\offline` 作为优先包源，并保留 `nuget.org` 作为在线包源。
-- `scripts\Use-HermesEnv.ps1` 统一设置 `DOTNET_CLI_HOME`、NuGet 缓存、scratch/cache 目录和可选代理，并确保 `.nuget\offline` 本地源目录存在；SDK 根目录可由 `HERMES_DOTNET_ROOT` 指定，未指定时依次探测 `C:\Code\Env\dotnet`、`D:\Code\Env\dotnet` 和 `PATH`。构建中间目录默认落在系统临时目录，避免受工作区删除限制影响。
+- `scripts\Use-HermesEnv.ps1` 统一设置 `DOTNET_CLI_HOME`、NuGet 缓存、scratch/cache 目录和可选代理，并确保 `.nuget\offline` 本地源目录存在；SDK 根目录可由 `HERMES_DOTNET_ROOT` 指定，未指定时依次探测 `C:\Code\Env\dotnet`、`D:\Code\Env\dotnet` 和 `PATH`。构建中间目录默认落在系统临时目录，并按 `MSBuildProjectName` 隔离，避免主项目与测试项目互相编译生成文件。
 - `scripts\Restore-Hermes.ps1`、`scripts\Test-Hermes.ps1`、`scripts\Publish-Hermes.ps1` 和 `scripts\Package-HermesRelease.ps1` 是标准入口。
 
 自包含发布需要以下 runtime packs 放在 `.nuget\offline`：
@@ -244,14 +276,14 @@ powershell -ExecutionPolicy Bypass -File scripts\Publish-Hermes.ps1
 对外 GitHub Release 采用 zip 包分发，脚本会先生成固定 self-contained portable 目录，再压缩为版本化 zip 并生成 SHA256 校验文件：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\Package-HermesRelease.ps1 -Version 0.2.4
+powershell -ExecutionPolicy Bypass -File scripts\Package-HermesRelease.ps1 -Version 0.3.0
 ```
 
 输出目录：
 
 ```text
-artifacts\release\v0.2.4\
-├─ Hermes-v0.2.4-win-x64-portable.zip
+artifacts\release\v0.3.0\
+├─ Hermes-v0.3.0-win-x64-portable.zip
 └─ checksums.txt
 ```
 
@@ -305,12 +337,15 @@ Hermes 的用户数据保存在：
 - `secrets.dat`：DPAPI 加密后的 API Key。
 - `app.log`：本地日志。
 - `history.json`：翻译历史，默认不保存。
+- `apps\codex-auth-switch-sync\profiles\*.profile`：当前 Windows 用户 DPAPI 加密的 Codex 完整认证档案。
+- `apps\codex-auth-switch-sync\backups\`：切换/同步前的加密恢复材料，最多保留五份。
 
 设计原则：
 
 - 不自动上传未被用户明确触发的文本。
 - 被动鼠标路径不执行剪贴板复制。
 - API Key 不写入普通设置文件。
+- Codex auth、OAuth token、API Key 和备份清单不写入普通设置或日志；DPAPI 档案只能由创建它的 Windows 用户解密，每台电脑需单独初始化。
 - 日志默认不记录完整原文和译文。
 - 支持排除应用和敏感应用。
 
@@ -322,11 +357,26 @@ Hermes 的用户数据保存在：
 - 设置窗口的 Mica 背景依赖 Windows 11 DWM 能力；在不支持的系统或透明窗口组合受限时会退回内置深色背景。
 - 真实多显示器、高 DPI、不同应用兼容性需要持续人工试用。
 - 当前打包是 portable 测试包，不是正式安装器。
+- Codex 会话同步只改变本机 rollout 与 `state_5.sqlite` 中的 Provider 元数据，不等于 ChatGPT 网页云同步；跨认证会话中的加密内容可能仍无法继续。
+- 为避免 Codex 同时写入造成竞争，浏览器登录、切换与同步要求先退出 Codex 桌面端、CLI、ChatGPT 和 IDE Codex 扩展。
+- ChatGPT 浏览器登录依赖本机可用的 Codex CLI 或官方 Codex 编辑器扩展；OAuth 页面和服务端可用性无法由离线自动测试覆盖。
 
 ## 设计变更记录
 
 | 日期 | 变更 | 影响范围 |
 | --- | --- | --- |
+| 2026-08-14 | 准备并发布 v0.3.0：补充程序集版本和 Release Notes，将打包脚本、README 与发布示例统一到 0.3.0；发布前删除已废弃的固定 API 配置生成路径及其私网开发地址，并将 `Microsoft.Data.Sqlite` 升级到 10.0.11 以消除 SQLite 原生依赖的高危公告。 | Release / Security / Dependencies / Apps / Tests / 文档维护 |
+| 2026-08-14 | 将隐私设置并入常规页，移除独立“隐私”页签，在保留历史记录开关与隐私边界提示的同时把设置一级导航由六项缩减为五项。 | Shell / UI / Privacy / Tests / 文档维护 |
+| 2026-08-14 | 全面精简设置、应用中心与 Codex 页面微文案：删除复述控件含义的 6 处说明，缩短隐私、诊断与同步边界提示，将 OpenAI 翻译开关改为可见标签，合并“全部 Rollout”指标，并移除常规、外观、隐私及应用中心与页签重复的标题；动态状态、错误、认证档案和会话分类解释继续保留。 | Shell / Apps / UI / Accessibility / Tests / 文档维护 |
+| 2026-08-14 | 移除已有 ChatGPT 档案时冗余的“更新当前登录”入口；“保存当前登录”仅用于首次捕获现有 ChatGPT 认证，后续凭据更新由切换离开 ChatGPT 时的自动刷新负责，当前卡片仅保留真正重新认证的“重新登录”。 | Apps / UI / Tests / 文档维护 |
+| 2026-08-14 | 修复活动 API 档案编辑只更新加密 Profile、未更新 `.codex` 导致 `base_url` 仍使用旧值的问题：统一保存现在会事务式合并并应用 config、整体更新 auth、同步会话且失败回滚；API 编辑器回显解密 auth、移除重复标题/帮助/局部保存按钮，会话文案改为“常规会话”并移除加法行；系统 MessageBox 替换为 Hermes 内嵌确认层。 | Apps / Shell / UI / Config / Privacy / Tests / 文档维护 |
+| 2026-08-14 | Codex 认证卡片操作区改为状态化布局：隐藏当前认证的无效切换按钮，根据档案状态切换“浏览器登录/重新登录”“保存/更新当前登录”和 API 配置文案，每张卡最多显示两个操作并动态确定唯一主按钮，消除 ChatGPT 三按钮在窄卡片中的孤立换行。 | Apps / UI / Tests / 文档维护 |
+| 2026-08-14 | 设置页将“应用”移动到“高级”右侧并固定为最右页签；Codex 认证管理新增官方浏览器登录，可在仅有 API 认证的新电脑上自动备份、调用 `codex login`、校验并加密保存 ChatGPT 档案，再切换认证并同步本地会话，失败时恢复原状态。 | Apps / Shell / UI / Privacy / Tests / 文档维护 |
+| 2026-08-14 | Codex 认证切换由整份 `config.toml` 覆盖改为 TOML 语义递归合并：目标同路径值覆盖、新键加入、目标缺少的 MCP/插件/项目等共享树保留；`auth.json` 仍整体替换，旧认证路由项按目标清理，当前档案仅刷新 auth，避免合并后的旧共享配置回灌。 | Apps / Config / Privacy / Tests / 文档维护 |
+| 2026-08-14 | API 档案配置升级为完整 `config.toml + auth.json` 粘贴导入：支持任意中转站和区分大小写的自定义 Provider，保留配置原文；auth 默认不回显、可留空沿用、编辑时禁用撤销历史并在退出编辑器时清空。 | Apps / UI / Privacy / Tests / 文档维护 |
+| 2026-08-14 | 明确 Codex Provider 标识严格区分大小写；SQLite Provider 分组与更新条件显式使用 `BINARY`，并以 `NOCASE` 测试表验证 `OpenAI` 与 `openai` 不会被合并。 | Apps / Tests / 文档维护 |
+| 2026-08-14 | Codex 认证管理新增会话构成统计，在不读取正文的前提下将 rollout 分为普通活动、内部子代理、已归档和无法分类，并直接解释总数与 Codex 历史列表数量的差异。 | Apps / UI / Tests / 文档维护 |
+| 2026-08-14 | 新增可扩展 `Apps/` 目录与应用中心，内置 `codex-auth-switch-sync`：DPAPI 加密管理 ChatGPT/API 完整档案，切换认证时原子更新 `.codex` 并同步 rollout 与权威 `state_5.sqlite`，提供进程守卫、加密备份、失败回滚和读回校验；同步补充一致 UI、测试、用户说明，修复多项目共享中间目录造成的重复生成文件，并在发布前检查运行实例以避免生成混合版本目录。 | Apps / Shell / Infrastructure / Privacy / Tests / Build / 文档维护 |
 | 2026-07-13 | 新增 `docs\release-notes\v0.2.4.md`，将 README、打包脚本默认版本和打包策略示例更新为 v0.2.4；本次发布聚焦划词文本读取、旧剪贴板隔离和普通划词误触三项稳定性修复。 | Input / Selection / Tests / 文档维护 / 打包发布 |
 | 2026-07-13 | 修复划词触发与读取协议：鼠标起手同时校验 Ctrl/Alt 物理按下状态和 hook 时间线，普通划词不再因遗留键状态显示按钮；候选点击绑定原前台窗口；受控剪贴板以私有探针和序列号验证本次 `Ctrl+C` 的新内容，等待上限提升到 350ms，失败时不再翻译旧剪贴板文本。同步增加回归测试，并让构建脚本自动探测本机 .NET SDK。 | Input / Selection / Translation / Tests / 开发环境 |
 | 2026-05-26 | 建立根目录 `Design.md`，明确项目结构、核心流程、模块职责和文档同步规则。 | 文档维护 |

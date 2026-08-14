@@ -3,6 +3,8 @@ using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using Hermes.Windows.Apps;
+using Hermes.Windows.Apps.Contracts;
 using Hermes.Windows.History;
 using Hermes.Windows.Infrastructure;
 using Hermes.Windows.Input;
@@ -15,7 +17,7 @@ using WpfRadioButton = System.Windows.Controls.RadioButton;
 
 namespace Hermes.Windows.Shell;
 
-public partial class SettingsWindow : Window
+public partial class SettingsWindow : Window, IHermesConfirmationHost
 {
     private const string ApiKeyMask = "********";
     private const double ShellCornerRadius = 14;
@@ -27,11 +29,13 @@ public partial class SettingsWindow : Window
     private readonly StartupRegistrationService _startupRegistrationService;
     private readonly TranslationHistoryService _historyService;
     private readonly TriggerDiagnosticsService _triggerDiagnosticsService;
+    private readonly AppRegistry _appRegistry;
     private readonly AppLogger _logger;
     private bool _isLoadingSettings;
     private bool _apiKeyVisible;
     private bool _isRecordingHotkey;
     private string? _hotkeyBeforeRecording;
+    private TaskCompletionSource<bool>? _confirmationCompletion;
     private System.Windows.Threading.DispatcherTimer? _windowSizePersistTimer;
 
     public SettingsWindow(
@@ -41,6 +45,7 @@ public partial class SettingsWindow : Window
         StartupRegistrationService startupRegistrationService,
         TranslationHistoryService historyService,
         TriggerDiagnosticsService triggerDiagnosticsService,
+        AppRegistry appRegistry,
         AppLogger logger)
     {
         InitializeComponent();
@@ -50,7 +55,9 @@ public partial class SettingsWindow : Window
         _startupRegistrationService = startupRegistrationService;
         _historyService = historyService;
         _triggerDiagnosticsService = triggerDiagnosticsService;
+        _appRegistry = appRegistry;
         _logger = logger;
+        AppsHost.Content = new AppsCenterView(appRegistry);
         _windowSizePersistTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(320) };
         _windowSizePersistTimer.Tick += (_, _) =>
         {
@@ -85,6 +92,17 @@ public partial class SettingsWindow : Window
             _windowSizePersistTimer?.Stop();
             _windowSizePersistTimer?.Start();
         }
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        CompleteConfirmation(false);
+        foreach (var participant in _appRegistry.Apps.OfType<ISettingsSaveParticipant>())
+        {
+            participant.DiscardPendingChanges();
+        }
+
+        base.OnClosed(e);
     }
 
     private void Window_Loaded(object sender, RoutedEventArgs e)
@@ -166,6 +184,21 @@ public partial class SettingsWindow : Window
             {
                 StatusText.Text = validationMessage;
                 return false;
+            }
+
+            foreach (var participant in _appRegistry.Apps.OfType<ISettingsSaveParticipant>())
+            {
+                if (!participant.HasPendingChanges)
+                {
+                    continue;
+                }
+
+                var appResult = await participant.SavePendingChangesAsync();
+                if (!appResult.Success)
+                {
+                    StatusText.Text = appResult.UserMessage ?? "应用配置保存失败。";
+                    return false;
+                }
             }
 
             var settings = _settingsService.Current;
@@ -495,6 +528,50 @@ public partial class SettingsWindow : Window
     private void Close_Click(object sender, RoutedEventArgs e)
     {
         Close();
+    }
+
+    public Task<bool> ConfirmAsync(string title, string message, string confirmText)
+    {
+        if (_confirmationCompletion is not null)
+        {
+            return Task.FromResult(false);
+        }
+
+        ConfirmationTitleText.Text = title;
+        ConfirmationMessageText.Text = message;
+        ConfirmationConfirmButtonText.Text = confirmText;
+        System.Windows.Automation.AutomationProperties.SetName(ConfirmationConfirmButton, confirmText);
+        ConfirmationOverlay.Visibility = Visibility.Visible;
+        _confirmationCompletion = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        ConfirmationConfirmButton.Focus();
+        return _confirmationCompletion.Task;
+    }
+
+    private void ConfirmationCancel_Click(object sender, RoutedEventArgs e) => CompleteConfirmation(false);
+
+    private void ConfirmationConfirm_Click(object sender, RoutedEventArgs e) => CompleteConfirmation(true);
+
+    private void CompleteConfirmation(bool confirmed)
+    {
+        var completion = _confirmationCompletion;
+        if (completion is null)
+        {
+            return;
+        }
+
+        _confirmationCompletion = null;
+        ConfirmationOverlay.Visibility = Visibility.Collapsed;
+        completion.TrySetResult(confirmed);
+    }
+
+    private void Window_PreviewKeyDown(object sender, WpfInput.KeyEventArgs e)
+    {
+        if (_confirmationCompletion is not null && e.Key == WpfInput.Key.Escape)
+        {
+            CompleteConfirmation(false);
+            e.Handled = true;
+        }
     }
 
     private async void ApiKeyReveal_Click(object sender, RoutedEventArgs e)

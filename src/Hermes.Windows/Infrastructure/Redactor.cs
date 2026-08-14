@@ -27,7 +27,9 @@ public static partial class Redactor
             return value;
         }
 
-        return ApiKeyPattern().Replace(value, "$1[redacted]");
+        var redacted = ApiKeyPattern().Replace(value, "$1[redacted]");
+        redacted = OpenAiKeyPattern().Replace(redacted, "[redacted-openai-key]");
+        return TokenFieldPattern().Replace(redacted, "$1[redacted]");
     }
 
     public static string SummarizeText(string? text, int maxLength = 120)
@@ -43,6 +45,12 @@ public static partial class Redactor
 
     [GeneratedRegex(@"(?i)(api[_-]?key\s*[:=]\s*)([^\s,;]+)")]
     private static partial Regex ApiKeyPattern();
+
+    [GeneratedRegex(@"(?i)\bsk-[a-z0-9_-]{8,}")]
+    private static partial Regex OpenAiKeyPattern();
+
+    [GeneratedRegex("""(?i)((?:access|refresh|id)_token["']?\s*[:=]\s*["']?)([^"',\s}]+)""")]
+    private static partial Regex TokenFieldPattern();
 
     [GeneratedRegex(@"\s+")]
     private static partial Regex WhitespacePattern();

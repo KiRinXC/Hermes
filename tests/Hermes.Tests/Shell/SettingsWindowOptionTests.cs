@@ -42,6 +42,8 @@ public static class SettingsWindowOptionTests
         suite.Add("settings window uses local themed scrollbars", WindowUsesLocalThemedScrollbars);
         suite.Add("settings appearance does not expose popup size controls", AppearanceDoesNotExposePopupSizeControls);
         suite.Add("settings clear history also clears diagnostics", ClearHistoryAlsoClearsDiagnostics);
+        suite.Add("settings window keeps explanatory microcopy concise", WindowKeepsExplanatoryMicrocopyConcise);
+        suite.Add("settings window keeps privacy options in general", WindowKeepsPrivacyOptionsInGeneral);
     }
 
     private static void LabelsPreserveStorageValues()
@@ -60,6 +62,39 @@ public static class SettingsWindowOptionTests
     {
         var first = SettingsWindowOptions.Providers.First();
         TestAssert.Equal("Transmart", first.Value);
+    }
+
+    private static void WindowKeepsExplanatoryMicrocopyConcise()
+    {
+        var xaml = File.ReadAllText(FindRepoFile("src/Hermes.Windows/Shell/SettingsWindow.xaml"));
+
+        TestAssert.False(xaml.Contains("基础行为监控", StringComparison.Ordinal));
+        TestAssert.False(xaml.Contains("视觉材质与规格", StringComparison.Ordinal));
+        TestAssert.False(xaml.Contains("数据隐私保护管线", StringComparison.Ordinal));
+        TestAssert.False(xaml.Contains("当鼠标在任意窗口拖选", StringComparison.Ordinal));
+        TestAssert.False(xaml.Contains("允许信使在 Windows 登录时", StringComparison.Ordinal));
+        TestAssert.False(xaml.Contains("默认使用 Tencent Transmart 进行翻译", StringComparison.Ordinal));
+        TestAssert.False(xaml.Contains("开启后历史记录会同时写入源文本", StringComparison.Ordinal));
+        TestAssert.Contains("Text=\"翻译也使用 OpenAI\"", xaml);
+        TestAssert.Contains("仅保存在本机，默认关闭。", xaml);
+        TestAssert.Contains("Hermes 不上传未主动触发的文本", xaml);
+        TestAssert.Contains("记录触发原因，不记录选中文本。", xaml);
+    }
+
+    private static void WindowKeepsPrivacyOptionsInGeneral()
+    {
+        var xaml = File.ReadAllText(FindRepoFile("src/Hermes.Windows/Shell/SettingsWindow.xaml"));
+        var generalStart = xaml.IndexOf("<TabItem Header=\"常规\">", StringComparison.Ordinal);
+        var translationStart = xaml.IndexOf("<TabItem Header=\"翻译\">", StringComparison.Ordinal);
+        var saveHistoryStart = xaml.IndexOf("x:Name=\"SaveHistoryCheck\"", StringComparison.Ordinal);
+        var saveOriginalStart = xaml.IndexOf("x:Name=\"SaveOriginalCheck\"", StringComparison.Ordinal);
+
+        TestAssert.True(generalStart >= 0);
+        TestAssert.True(translationStart > generalStart);
+        TestAssert.True(saveHistoryStart > generalStart && saveHistoryStart < translationStart);
+        TestAssert.True(saveOriginalStart > generalStart && saveOriginalStart < translationStart);
+        TestAssert.False(xaml.Contains("<TabItem Header=\"隐私\">", StringComparison.Ordinal));
+        TestAssert.Equal(5, xaml.Split("<TabItem Header=", StringSplitOptions.None).Length - 1);
     }
 
     private static void FloatingButtonStyleOptionsIncludeHighContrastPairs()

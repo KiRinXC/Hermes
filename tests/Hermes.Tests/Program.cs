@@ -1,4 +1,5 @@
 using Hermes.Tests;
+using Hermes.Tests.Apps;
 using Hermes.Tests.Infrastructure;
 using Hermes.Tests.Input;
 using Hermes.Tests.Overlay;
@@ -11,6 +12,7 @@ using Hermes.Tests.Tray;
 using Hermes.Tests.UI;
 
 var suite = new TestSuite();
+CodexAuthSwitchSyncTests.Register(suite);
 SettingsTests.Register(suite);
 RedactorTests.Register(suite);
 SelectionTextValidatorTests.Register(suite);

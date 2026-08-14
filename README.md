@@ -25,13 +25,14 @@ Hermes 是一个 Windows 全局 AI 划词翻译助手。选中英文内容后，
 - API Key 使用 Windows DPAPI 加密保存在本机。
 - 支持浅色、深色和跟随系统主题。
 - 默认不保存翻译历史，隐私优先。
+- 设置最右侧提供“应用”中心；首个内置应用 `Codex 认证管理` 可通过官方浏览器流程初始化 ChatGPT 登录、保存 ChatGPT / API 两套完整认证档案，一键切换认证并对齐本地 Codex 会话索引。
 
 ## 下载和运行
 
 正式对外发布时，请在 GitHub Releases 中下载：
 
 ```text
-Hermes-v0.2.4-win-x64-portable.zip
+Hermes-v0.3.0-win-x64-portable.zip
 ```
 
 解压后运行：
@@ -56,6 +57,22 @@ artifacts\publish\Hermes.Windows\manual-test\win-x64-self-contained\
 4. 选中一段英文文本，按 `Ctrl+Alt+E` 翻译。
 5. 或先按住 `Ctrl`，再划选英文文本，松开鼠标/键盘后点击出现的悬浮翻译图标。
 6. 先按住 `Alt`，再划选术语，松开鼠标/键盘后点击悬浮按钮查看解释。
+
+### Codex 认证管理
+
+1. 打开“设置 → 应用 → Codex 认证管理”。
+2. 如果这台电脑当前只有 API 登录，先点击 ChatGPT 卡片中的“浏览器登录”；Hermes 会调用官方 `codex login` 打开浏览器，认证成功后自动保存 ChatGPT 档案、切换认证并同步本地会话。若已在 Codex 中使用 ChatGPT 登录，也可点击“保存当前登录”。
+3. API 登录在“配置”中直接编辑中转站提供的完整 `config.toml` 与 `auth.json`，然后使用设置窗口右下角“确定保存”。已保存的 auth 会在本次编辑期间解密回显，便于确认和修改。
+4. 浏览器登录、切换或单独同步前，完全退出 Codex 桌面端、CLI、ChatGPT 和使用 Codex 的 IDE 扩展。
+5. 点击目标认证方式；Hermes 会先备份，以当前 `.codex/config.toml` 为基础递归合并目标配置、整体替换 `.codex/auth.json`，同步 rollout 和权威 `state_5.sqlite`，最后读回校验。
+
+浏览器登录依赖 Codex 官方运行程序，但不要求单独安装 CLI：Hermes 会依次查找 PATH、npm 安装目录以及 VS Code / VS Code Insiders / Cursor / Windsurf 中官方 Codex 扩展自带的程序。账号密码只在 OpenAI 官方浏览器认证页中输入，Hermes 不读取登录输出，也不记录 token；为了让 CLI 与 IDE 扩展共享同一份认证，登录时会把 `cli_auth_credentials_store` 设置为 `file` 并校验 `%CODEX_HOME%\auth.json`。
+
+认证卡片只显示与当前状态相关的操作：当前使用 ChatGPT 且尚无档案时显示“保存当前登录”和“重新登录”；档案建立后，当前 ChatGPT 卡片只保留真正会重新认证的“重新登录”，认证档案会在之后切换离开 ChatGPT 时自动刷新；尚未建立 ChatGPT 档案且当前使用 API 时以“浏览器登录”为主操作；已有档案且当前使用 API 时显示“切换到 ChatGPT”。不可执行或可由切换流程自动完成的操作不会继续占位。
+
+这里的“同步”是让两种认证都能在同一个本机 Codex 会话列表中看到既有记录：它只重映射本地 Provider 元数据，不把会话上传到 ChatGPT 网页。状态页会把 rollout 总数拆分为常规会话、内部子代理和已归档会话，说明为什么文件数可能大于历史列表数。跨认证会话中的加密内容仍可能因归属不同而无法继续。
+
+API 档案不再固定使用 `OpenAI`。Hermes 从粘贴的 `config.toml` 根配置读取 `model_provider`，保留中转站给出的模型、地址、Provider 定义和其他内容；切换时目标配置中已有的同路径值会替换、新值会加入，目标没有声明的 MCP、插件、项目和其他本机配置保持不变。Provider 标识严格区分大小写，例如 `OpenAI` 与 `openai` 不会被视为同一个 Provider。`auth.json` 在档案中始终以当前 Windows 用户的 DPAPI 加密存储，只在打开编辑器时解密回显，并在保存、返回应用列表或关闭设置窗口后立即从编辑框清除。当前已经使用 API 认证时，右下角保存会同时更新活动 `.codex/config.toml` 与 `.codex/auth.json`、保留未被目标档案声明的 MCP 等本机配置并对齐会话 Provider；应用失败会恢复保存前状态。当前使用 ChatGPT 时则只更新 API 档案，供下次切换使用。
 
 默认 Base URL：
 
@@ -87,6 +104,7 @@ Windows 上不同应用暴露选区的方式并不一致，所以 Hermes 采用�
 
 - 只有用户主动按快捷键、点击悬浮按钮或选择翻译剪贴板时，Hermes 才会发送文本。
 - API Key 不写入 `settings.json`，而是使用 Windows DPAPI 加密保存。
+- Codex 的完整 config + auth 档案同样使用当前 Windows 用户的 DPAPI 加密，保存在 `%LOCALAPPDATA%\Hermes\apps\codex-auth-switch-sync\`；不会随电脑同步，每台电脑需分别初始化。
 - 翻译历史默认关闭。
 - 日志默认不记录完整原文和译文，也会脱敏 API Key 形态的内容。
 - 可在设置中维护排除应用和敏感应用列表。
@@ -110,27 +128,27 @@ powershell -ExecutionPolicy Bypass -File scripts\Publish-Hermes.ps1
 生成 GitHub Release portable zip：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\Package-HermesRelease.ps1 -Version 0.2.4
+powershell -ExecutionPolicy Bypass -File scripts\Package-HermesRelease.ps1 -Version 0.3.0
 ```
 
 输出位置：
 
 ```text
-artifacts\release\v0.2.4\
+artifacts\release\v0.3.0\
 ```
 
 其中包含：
 
-- `Hermes-v0.2.4-win-x64-portable.zip`
+- `Hermes-v0.3.0-win-x64-portable.zip`
 - `checksums.txt`
 
 ## GitHub Release 流程
 
 1. 运行测试：`scripts\Test-Hermes.ps1`
-2. 生成 zip：`scripts\Package-HermesRelease.ps1 -Version 0.2.4`
-3. 创建 tag：`v0.2.4`
+2. 生成 zip：`scripts\Package-HermesRelease.ps1 -Version 0.3.0`
+3. 创建 tag：`v0.3.0`
 4. 在 GitHub Releases 上传 zip 和 `checksums.txt`
-5. 把 `docs/release-notes/v0.2.4.md` 的内容作为 Release Notes
+5. 把 `docs/release-notes/v0.3.0.md` 的内容作为 Release Notes
 
 > 目前 Hermes 还没有代码签名证书。Windows SmartScreen 可能会提示未知发布者，这是独立 Windows 应用早期发布时常见的情况。
 

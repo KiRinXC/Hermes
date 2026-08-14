@@ -7,6 +7,19 @@ $ErrorActionPreference = "Stop"
 . "$PSScriptRoot\Use-HermesEnv.ps1" -UseLocalProxy:$UseLocalProxy -ProxyUrl $ProxyUrl
 
 $output = Join-Path $Global:HermesRepoRoot "artifacts\publish\Hermes.Windows\manual-test\win-x64-self-contained"
+$outputExe = Join-Path $output "Hermes.Windows.exe"
+$lockingProcesses = Get-Process -Name "Hermes.Windows" -ErrorAction SilentlyContinue | Where-Object {
+    try {
+        [string]::Equals($_.Path, $outputExe, [System.StringComparison]::OrdinalIgnoreCase)
+    }
+    catch {
+        $false
+    }
+}
+if ($lockingProcesses) {
+    $processIds = ($lockingProcesses | ForEach-Object Id) -join ", "
+    throw "Hermes is running from the publish directory (PID: $processIds). Exit it from the system tray before publishing."
+}
 
 & $Global:HermesDotnetExe publish "$Global:HermesRepoRoot\src\Hermes.Windows\Hermes.Windows.csproj" `
     --configfile "$Global:HermesNuGetConfig" `
@@ -16,7 +29,7 @@ $output = Join-Path $Global:HermesRepoRoot "artifacts\publish\Hermes.Windows\man
     -p:PublishSingleFile=false `
     -p:NuGetAudit=false `
     -p:MSBuildEnableWorkloadResolver=false `
-    -p:BaseIntermediateOutputPath="$Global:HermesBuildIntermediateRoot\" `
+    -p:HermesIntermediateRoot="$Global:HermesBuildIntermediateRoot" `
     --artifacts-path "$Global:HermesRepoRoot\artifacts\dotnet" `
     -o "$output" `
     --tl:off

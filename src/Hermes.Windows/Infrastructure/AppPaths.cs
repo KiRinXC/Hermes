@@ -25,6 +25,10 @@ public static class AppPaths
 
     public static string HistoryPath => Path.Combine(AppDataDirectory, "history.json");
 
+    public static string AppsDirectory => Path.Combine(AppDataDirectory, "apps");
+
+    public static string GetAppDirectory(string appId) => Path.Combine(AppsDirectory, appId);
+
     public static void EnsureCreated()
     {
         if (!Directory.Exists(AppDataDirectory) && Directory.Exists(LegacyAppDataDirectory))

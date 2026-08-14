@@ -10,7 +10,7 @@ $ErrorActionPreference = "Stop"
     --configfile "$Global:HermesNuGetConfig" `
     -p:NuGetAudit=false `
     -p:MSBuildEnableWorkloadResolver=false `
-    -p:BaseIntermediateOutputPath="$Global:HermesBuildIntermediateRoot\" `
+    -p:HermesIntermediateRoot="$Global:HermesBuildIntermediateRoot" `
     -p:BaseOutputPath="$Global:HermesBuildOutputRoot\" `
     --tl:off
 
