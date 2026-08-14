@@ -96,17 +96,23 @@ finally {
     Pop-Location
 }
 
-$assetNames = @(
+$releaseAssetNames = @(
+    "Hermes-win-Setup.exe",
     "Hermes-$normalizedVersion-full.nupkg",
     "Hermes-$normalizedVersion-delta.nupkg",
-    "Hermes-win-Portable.zip",
-    "Hermes-win-Setup.exe",
-    "releases.win.json",
-    "assets.win.json"
+    "releases.win.json"
 )
 
+$staleReleaseAssetNames = @($generatedAssets + "checksums.txt") | Select-Object -Unique
+foreach ($assetName in $staleReleaseAssetNames) {
+    $assetPath = Join-Path $releaseDir $assetName
+    if (Test-Path $assetPath) {
+        Remove-Item -LiteralPath $assetPath -Force
+    }
+}
+
 $copied = @()
-foreach ($assetName in $assetNames) {
+foreach ($assetName in $releaseAssetNames) {
     $source = Join-Path $feedDir $assetName
     if (Test-Path $source) {
         $destination = Join-Path $releaseDir $assetName
@@ -115,8 +121,12 @@ foreach ($assetName in $assetNames) {
     }
 }
 
-if (-not ($copied | Where-Object Name -EQ "Hermes-win-Portable.zip")) {
-    throw "Velopack did not create Hermes-win-Portable.zip."
+if (-not ($copied | Where-Object Name -EQ "Hermes-win-Setup.exe")) {
+    throw "Velopack did not create Hermes-win-Setup.exe."
+}
+
+if (-not ($copied | Where-Object Name -EQ "Hermes-$normalizedVersion-full.nupkg")) {
+    throw "Velopack did not create the full update package."
 }
 
 if (-not ($copied | Where-Object Name -EQ "releases.win.json")) {

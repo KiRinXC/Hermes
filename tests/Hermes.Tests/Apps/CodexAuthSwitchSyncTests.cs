@@ -505,6 +505,15 @@ public static class CodexAuthSwitchSyncTests
         TestAssert.False(installHandler.Contains("ConfirmAsync(", StringComparison.Ordinal));
         TestAssert.Contains("vpk pack", packageScript);
         TestAssert.Contains("releases.win.json", packageScript);
+        var releaseAssetsStart = packageScript.IndexOf("$releaseAssetNames = @(", StringComparison.Ordinal);
+        var releaseAssetsEnd = packageScript.IndexOf(")", releaseAssetsStart, StringComparison.Ordinal);
+        TestAssert.True(releaseAssetsStart >= 0 && releaseAssetsEnd > releaseAssetsStart);
+        var releaseAssets = packageScript[releaseAssetsStart..releaseAssetsEnd];
+        TestAssert.Contains("Hermes-win-Setup.exe", releaseAssets);
+        TestAssert.Contains("full.nupkg", releaseAssets);
+        TestAssert.Contains("releases.win.json", releaseAssets);
+        TestAssert.False(releaseAssets.Contains("Portable.zip", StringComparison.Ordinal));
+        TestAssert.False(releaseAssets.Contains("assets.win.json", StringComparison.Ordinal));
     }
 
     private static void AppUiUsesHermesStylesAndSecretLabels()

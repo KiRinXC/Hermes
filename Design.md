@@ -292,7 +292,7 @@ artifacts\publish\Hermes.Windows\manual-test\win-x64-self-contained\
 powershell -ExecutionPolicy Bypass -File scripts\Publish-Hermes.ps1
 ```
 
-对外 GitHub Release 从 v0.4.0 起采用 Velopack 1.2.0 生成 portable、可选 Setup、full/delta nupkg 与 win feed。仓库通过 `.config\dotnet-tools.json` 固定 `vpk` 版本；脚本仍先覆盖固定 self-contained manual-test 目录，再把 Velopack 资产写入持久 feed 目录以便后续生成 delta，并复制当前版本资产与 SHA256 清单：
+对外 GitHub Release 从 v0.4.0 起采用 Velopack 1.2.0 生成 Setup、full/delta nupkg 与 win feed。仓库通过 `.config\dotnet-tools.json` 固定 `vpk` 版本；脚本仍先覆盖固定 self-contained manual-test 目录，再把 Velopack 的完整中间资产写入持久 feed 目录以便后续生成 delta，但对外版本目录只复制 `Hermes-win-Setup.exe`、full/delta nupkg、`releases.win.json` 与 SHA256 清单。GitHub Release 以 Setup 作为唯一面向用户的安装入口，不发布 portable ZIP；nupkg 和 release feed 仅供应用内更新使用：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\Package-HermesRelease.ps1 -Version 0.4.0
@@ -302,11 +302,9 @@ powershell -ExecutionPolicy Bypass -File scripts\Package-HermesRelease.ps1 -Vers
 
 ```text
 artifacts\release\v0.4.0\
-├─ Hermes-win-Portable.zip
 ├─ Hermes-win-Setup.exe
 ├─ Hermes-0.4.0-full.nupkg
 ├─ releases.win.json
-├─ assets.win.json
 └─ checksums.txt
 ```
 
@@ -389,6 +387,7 @@ Hermes 的用户数据保存在：
 
 | 日期 | 变更 | 影响范围 |
 | --- | --- | --- |
+| 2026-08-14 | 将 v0.4.0 对外发行入口统一为 `Hermes-win-Setup.exe`：发行目录和 GitHub Release 不再包含 portable ZIP，只保留安装程序、应用内更新所需的 full/delta nupkg、`releases.win.json` 与校验文件。 | Release / Packaging / Documentation / Tests |
 | 2026-08-14 | 将软件更新交互收敛为卡片右侧单按钮：按钮沿用“测试连接”样式执行检查，最新版与错误在卡片内就地反馈；发现新版后同一按钮切换为蓝色“更新”，点击即开始保存、下载、退出安装与自动重启，并移除更新弹窗。 | Release / Shell / UI / Accessibility / Tests / 文档维护 |
 | 2026-08-14 | 将常规页“软件更新”改为可点击入口：打开不压暗背景的 Hermes 主题弹窗后检查并展示版本，“安装”作为唯一最终确认；下载完成后由 Velopack 自动退出、安装并重新打开 Hermes，同时移除界面中的运行方式限制文案。 | Release / Infrastructure / Shell / UI / Accessibility / Tests / 文档维护 |
 | 2026-08-14 | 优化 Codex 认证切换、档案保存和浏览器登录等待态：移除默认 WPF 横向进度条和整页黑色遮罩，改用透明命中层、带轻阴影的主题卡片、环形状态标识、当前步骤文案及 180ms 进入动效；尊重 Windows 界面动画开关，并继续保留浏览器登录的按钮/Esc 取消入口。 | Apps / Shell / UI / Accessibility / Tests / 文档维护 |

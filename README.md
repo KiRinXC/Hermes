@@ -36,13 +36,7 @@ Hermes 是一个 Windows 全局 AI 划词翻译助手。选中英文内容后，
 Hermes-win-Setup.exe
 ```
 
-安装后 Hermes 会自动启动；发现后续版本时，可在“设置 → 常规”中确认下载、安装并重启。如需免安装方式，也可下载 `Hermes-win-Portable.zip`，解压后运行：
-
-```text
-Hermes.exe
-```
-
-这是 `win-x64 self-contained` portable 包，目标机器不需要额外安装 .NET Runtime。
+安装程序是 GitHub Release 中唯一面向用户的下载入口，随包携带 .NET Runtime。安装后 Hermes 会自动启动；发现后续版本时，可在“设置 → 常规”中确认下载、安装并重启。
 
 如果你是从源码构建，当前本机验证包位于：
 
@@ -142,18 +136,19 @@ artifacts\release\v0.4.0\
 
 其中包含：
 
-- `Hermes-win-Portable.zip`
 - `Hermes-win-Setup.exe`
 - `Hermes-0.4.0-full.nupkg`
-- `releases.win.json` 与 `assets.win.json`
+- `releases.win.json`
 - `checksums.txt`
+
+`Hermes-win-Setup.exe` 是用户唯一需要下载的安装入口；`.nupkg` 与 `releases.win.json` 是应用内更新使用的后台资产。
 
 ## GitHub Release 流程
 
 1. 运行测试：`scripts\Test-Hermes.ps1`
 2. 生成发行资产：`scripts\Package-HermesRelease.ps1 -Version 0.4.0`
 3. 创建 tag：`v0.4.0`
-4. 在 GitHub Releases 上传该版本目录中的 portable、full nupkg、两个 JSON feed 和 `checksums.txt`；Setup 可一并上传
+4. 在 GitHub Releases 上传该版本目录中的 Setup、full/delta nupkg、`releases.win.json` 和 `checksums.txt`
 5. 把 `docs/release-notes/v0.4.0.md` 的内容作为 Release Notes
 
 > 目前 Hermes 还没有代码签名证书。Windows SmartScreen 可能会提示未知发布者，这是独立 Windows 应用早期发布时常见的情况。
