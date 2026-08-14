@@ -5,17 +5,39 @@ namespace Hermes.Windows.Infrastructure;
 public static class AppPaths
 {
     private const string AppDataFolderName = "Hermes";
+    private const string PublisherFolderName = "KiRinXC";
     private const string LegacyAppDataFolderName = "AITranslator";
 
     private static string LocalAppDataDirectory { get; } = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+    private static bool _suppressCreationForUserDataDeletion;
 
     public static string AppDataDirectory { get; } = Path.Combine(
+        LocalAppDataDirectory,
+        PublisherFolderName,
+        AppDataFolderName);
+
+    private static string InstallCoupledAppDataDirectory { get; } = Path.Combine(
         LocalAppDataDirectory,
         AppDataFolderName);
 
     private static string LegacyAppDataDirectory { get; } = Path.Combine(
         LocalAppDataDirectory,
         LegacyAppDataFolderName);
+
+    public static string ProgramDirectory
+    {
+        get
+        {
+            var contentDirectory = Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory);
+            var parent = Directory.GetParent(contentDirectory);
+            return parent is not null
+                && string.Equals(parent.Name, AppDataFolderName, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(Path.GetFileName(contentDirectory), "current", StringComparison.OrdinalIgnoreCase)
+                && File.Exists(Path.Combine(parent.FullName, "Update.exe"))
+                    ? parent.FullName
+                    : contentDirectory;
+        }
+    }
 
     public static string SettingsPath => Path.Combine(AppDataDirectory, "settings.json");
 
@@ -31,27 +53,43 @@ public static class AppPaths
 
     public static void EnsureCreated()
     {
-        if (!Directory.Exists(AppDataDirectory) && Directory.Exists(LegacyAppDataDirectory))
+        if (_suppressCreationForUserDataDeletion)
         {
-            CopyDirectory(LegacyAppDataDirectory, AppDataDirectory);
             return;
         }
 
         Directory.CreateDirectory(AppDataDirectory);
+        UserDataMigration.MigrateIfNeeded(
+            AppDataDirectory,
+            InstallCoupledAppDataDirectory,
+            LegacyAppDataDirectory);
     }
 
-    private static void CopyDirectory(string sourceDirectory, string targetDirectory)
+    public static void DeleteForShutdown()
     {
-        Directory.CreateDirectory(targetDirectory);
-
-        foreach (var file in Directory.EnumerateFiles(sourceDirectory))
+        var expectedParent = Path.GetFullPath(Path.Combine(LocalAppDataDirectory, PublisherFolderName));
+        var actualDirectory = Path.GetFullPath(AppDataDirectory);
+        if (!string.Equals(
+                Directory.GetParent(actualDirectory)?.FullName,
+                expectedParent,
+                StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(Path.GetFileName(actualDirectory), AppDataFolderName, StringComparison.OrdinalIgnoreCase))
         {
-            File.Copy(file, Path.Combine(targetDirectory, Path.GetFileName(file)), overwrite: false);
+            throw new InvalidOperationException("Hermes user data path validation failed.");
         }
 
-        foreach (var directory in Directory.EnumerateDirectories(sourceDirectory))
+        _suppressCreationForUserDataDeletion = true;
+        try
         {
-            CopyDirectory(directory, Path.Combine(targetDirectory, Path.GetFileName(directory)));
+            if (Directory.Exists(actualDirectory))
+            {
+                Directory.Delete(actualDirectory, recursive: true);
+            }
+        }
+        catch
+        {
+            _suppressCreationForUserDataDeletion = false;
+            throw;
         }
     }
 }

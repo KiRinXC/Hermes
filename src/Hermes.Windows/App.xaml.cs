@@ -47,8 +47,6 @@ public partial class App : System.Windows.Application
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
-        AppPaths.EnsureCreated();
-        _logger = new AppLogger();
         _singleInstanceGuard = new SingleInstanceGuard();
         if (!_singleInstanceGuard.IsFirstInstance)
         {
@@ -56,6 +54,9 @@ public partial class App : System.Windows.Application
             Shutdown();
             return;
         }
+
+        AppPaths.EnsureCreated();
+        _logger = new AppLogger();
 
         DispatcherUnhandledException += (_, args) =>
         {

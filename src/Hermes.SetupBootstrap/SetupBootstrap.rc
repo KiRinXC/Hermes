@@ -1,0 +1,8 @@
+#include <windows.h>
+
+#define IDI_HERMES 101
+#define IDR_CORE_SETUP 201
+
+IDI_HERMES ICON "Hermes.ico"
+IDR_CORE_SETUP RCDATA "Hermes-Core-Setup.exe"
+1 RT_MANIFEST "app.manifest"

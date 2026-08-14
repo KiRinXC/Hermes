@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
@@ -74,6 +76,10 @@ public partial class SettingsWindow : Window, IHermesConfirmationHost
         ApplyStoredWindowSize();
         InitializeOptionSources();
         LoadSettings();
+        ProgramPathText.Text = AppPaths.ProgramDirectory;
+        ProgramPathText.ToolTip = AppPaths.ProgramDirectory;
+        UserDataPathText.Text = AppPaths.AppDataDirectory;
+        UserDataPathText.ToolTip = AppPaths.AppDataDirectory;
         RenderUpdateState(_automaticUpdateService.State);
     }
 
@@ -376,6 +382,57 @@ public partial class SettingsWindow : Window, IHermesConfirmationHost
         }
     }
 
+    private void OpenProgramDirectory_Click(object sender, RoutedEventArgs e) =>
+        OpenDirectory(AppPaths.ProgramDirectory);
+
+    private void OpenUserDataDirectory_Click(object sender, RoutedEventArgs e)
+    {
+        AppPaths.EnsureCreated();
+        OpenDirectory(AppPaths.AppDataDirectory);
+    }
+
+    private async void DeleteUserData_Click(object sender, RoutedEventArgs e)
+    {
+        var confirmed = await ConfirmDestructiveAsync(
+            "删除全部用户数据？",
+            "设置、API Key、翻译历史和 Codex 认证档案都会被永久删除，Hermes 随后会退出。程序文件不会被删除。",
+            "删除并退出");
+        if (!confirmed)
+        {
+            return;
+        }
+
+        SetBusy(true, "正在删除用户数据...");
+        try
+        {
+            AppPaths.DeleteForShutdown();
+            System.Windows.Application.Current.Shutdown();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("User data deletion failed.", ex);
+            StatusText.Text = "用户数据删除失败，请先退出相关程序后重试。";
+            SetBusy(false);
+        }
+    }
+
+    private void OpenDirectory(string directory)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = directory,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning($"Directory could not be opened. {ex.Message}");
+            StatusText.Text = "无法打开目录，请复制页面中显示的路径后手动打开。";
+        }
+    }
+
     private void RefreshDiagnostics_Click(object sender, RoutedEventArgs e)
     {
         RefreshDiagnostics();
@@ -453,6 +510,9 @@ public partial class SettingsWindow : Window, IHermesConfirmationHost
         _isBusy = isBusy;
         TestButton.IsEnabled = !isBusy;
         AdvancedClearHistoryButton.IsEnabled = !isBusy;
+        OpenProgramDirectoryButton.IsEnabled = !isBusy;
+        OpenUserDataDirectoryButton.IsEnabled = !isBusy;
+        DeleteUserDataButton.IsEnabled = !isBusy;
         SaveButton.IsEnabled = !isBusy;
         RenderUpdateState(_automaticUpdateService.State);
         if (!string.IsNullOrWhiteSpace(message))
@@ -691,7 +751,17 @@ public partial class SettingsWindow : Window, IHermesConfirmationHost
         Close();
     }
 
-    public Task<bool> ConfirmAsync(string title, string message, string confirmText)
+    public Task<bool> ConfirmAsync(string title, string message, string confirmText) =>
+        ShowConfirmationAsync(title, message, confirmText, isDestructive: false);
+
+    private Task<bool> ConfirmDestructiveAsync(string title, string message, string confirmText) =>
+        ShowConfirmationAsync(title, message, confirmText, isDestructive: true);
+
+    private Task<bool> ShowConfirmationAsync(
+        string title,
+        string message,
+        string confirmText,
+        bool isDestructive)
     {
         if (_confirmationCompletion is not null)
         {
@@ -701,6 +771,8 @@ public partial class SettingsWindow : Window, IHermesConfirmationHost
         ConfirmationTitleText.Text = title;
         ConfirmationMessageText.Text = message;
         ConfirmationConfirmButtonText.Text = confirmText;
+        ConfirmationConfirmButton.Style = (Style)FindResource(
+            isDestructive ? "Settings.DangerButton" : "Settings.PrimaryButton");
         System.Windows.Automation.AutomationProperties.SetName(ConfirmationConfirmButton, confirmText);
         ConfirmationOverlay.Visibility = Visibility.Visible;
         _confirmationCompletion = new TaskCompletionSource<bool>(

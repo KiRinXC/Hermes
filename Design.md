@@ -54,8 +54,8 @@ Hermes
 
 `App.xaml.cs` 是当前应用的组合根。启动时它负责：
 
-- 创建 `%LOCALAPPDATA%\Hermes\` 数据目录。
 - 启用单实例守卫，重复启动时激活已有实例。
+- 首实例创建 `%LOCALAPPDATA%\KiRinXC\Hermes\` 数据目录，并把旧 `%LOCALAPPDATA%\Hermes\` 程序目录中的设置、密钥、历史与内置应用档案迁移出去。
 - 加载设置并应用主题。
 - 初始化 DPAPI 密钥存储、日志、历史、翻译服务、选区服务、悬浮层服务。
 - 创建 `AppRegistry` 并注册内置 `codex-auth-switch-sync` 应用；应用服务仍由组合根显式装配。
@@ -236,7 +236,7 @@ ChatGPT 与 API 档案都以 DPAPI 保存各自的 `config.toml` 模板和完整
 
 设置模块负责本地配置和密钥存储。
 
-- `SettingsService` 读写 `%LOCALAPPDATA%\Hermes\settings.json`。
+- `SettingsService` 读写 `%LOCALAPPDATA%\KiRinXC\Hermes\settings.json`。
 - `DpapiSecretStorageService` 使用 Windows DPAPI 加密保存 API Key 到 `secrets.dat`。
 - `StartupRegistrationService` 管理开机启动注册。
 - `AppSettings` 定义 API、翻译、触发、UI、隐私和启动设置。默认 Provider 为 `Transmart`（`https://transmart.qq.com/api`，`normal`），翻译设置包含可编辑系统 Prompt 和“解释个性化偏好”。
@@ -247,7 +247,7 @@ ChatGPT 与 API 档案都以 DPAPI 保存各自的 `config.toml` 模板和完整
 
 ### Infrastructure
 
-基础设施模块包括日志、路径、Win32 方法、应用身份、单实例守卫、日志脱敏和 `AutomaticUpdateService`。用户数据目录统一为 `%LOCALAPPDATA%\Hermes\`，并保留从旧目录迁移数据的兼容逻辑。内置应用的数据使用 `%LOCALAPPDATA%\Hermes\apps\<app-id>\` 子目录隔离。自动更新服务维护检查中、最新、发现版本、下载中、待重启、不受支持和失败等状态；组合根只定时检查与提醒，设置窗口订阅状态，并只在用户点击软件更新卡右侧的“更新”后调用下载、应用和重启。
+基础设施模块包括日志、路径、Win32 方法、应用身份、单实例守卫、日志脱敏、用户数据迁移和 `AutomaticUpdateService`。Velopack 程序目录保持 `%LOCALAPPDATA%\Hermes\`，用户数据独立保存到 `%LOCALAPPDATA%\KiRinXC\Hermes\`；首实例启动时只迁移 `settings.json`、`secrets.dat`、`history.json`、`app.log` 和 `apps\`，不会复制或删除 `current\`、`packages\`、`Update.exe` 等安装文件。内置应用的数据使用 `%LOCALAPPDATA%\KiRinXC\Hermes\apps\<app-id>\` 子目录隔离。自动更新服务维护检查中、最新、发现版本、下载中、待重启、不受支持和失败等状态；组合根只定时检查与提醒，设置窗口订阅状态，并只在用户点击软件更新卡右侧的“更新”后调用下载、应用和重启。
 
 ### UI/Themes
 
@@ -265,6 +265,7 @@ ChatGPT 与 API 档案都以 DPAPI 保存各自的 `config.toml` 模板和完整
 - `NuGet.Config` 使用 `.nuget\offline` 作为优先包源，并保留 `nuget.org` 作为在线包源。
 - `scripts\Use-HermesEnv.ps1` 统一设置 `DOTNET_CLI_HOME`、NuGet 缓存、scratch/cache 目录和可选代理，并确保 `.nuget\offline` 本地源目录存在；SDK 根目录可由 `HERMES_DOTNET_ROOT` 指定，未指定时依次探测 `C:\Code\Env\dotnet`、`D:\Code\Env\dotnet` 和 `PATH`。构建中间目录默认落在系统临时目录，并按 `MSBuildProjectName` 隔离，避免主项目与测试项目互相编译生成文件。
 - `scripts\Restore-Hermes.ps1`、`scripts\Test-Hermes.ps1`、`scripts\Publish-Hermes.ps1` 和 `scripts\Package-HermesRelease.ps1` 是标准入口。
+- 普通构建只依赖 .NET SDK；正式安装器额外使用 w64devkit 的 `g++` 与 `windres` 构建无托管运行时依赖的安装引导层，脚本依次从 `PATH`、`C:\Code\Env\C\w64devkit\bin` 和 `D:\Code\Env\C\w64devkit\bin` 查找。
 
 自包含发布需要以下 runtime packs 放在 `.nuget\offline`：
 
@@ -292,7 +293,7 @@ artifacts\publish\Hermes.Windows\manual-test\win-x64-self-contained\
 powershell -ExecutionPolicy Bypass -File scripts\Publish-Hermes.ps1
 ```
 
-对外 GitHub Release 从 v0.4.0 起采用 Velopack 1.2.0 生成 Setup、full/delta nupkg 与 win feed。仓库通过 `.config\dotnet-tools.json` 固定 `vpk` 版本；脚本仍先覆盖固定 self-contained manual-test 目录，再把 Velopack 的完整中间资产写入持久 feed 目录以便后续生成 delta，但对外版本目录只复制 `Hermes-win-Setup.exe`、full/delta nupkg、`releases.win.json` 与 SHA256 清单。GitHub Release 以 Setup 作为唯一面向用户的安装入口，不发布 portable ZIP；nupkg 和 release feed 仅供应用内更新使用：
+对外 GitHub Release 从 v0.4.0 起采用 Velopack 1.2.0 生成核心 Setup、full/delta nupkg 与 win feed。仓库通过 `.config\dotnet-tools.json` 固定 `vpk` 版本；脚本仍先覆盖固定 self-contained manual-test 目录，再把 Velopack 的完整中间资产写入持久 feed 目录以便后续生成 delta。公开的 `Hermes-win-Setup.exe` 是一个原生轻量引导层：先把旧 `%LOCALAPPDATA%\Hermes\` 中明确列出的用户数据复制到独立目录，再解出并启动内嵌的 Velopack Setup；这可保护同版本覆盖安装时尚未来得及由新程序迁移的数据，正常安装交互保持不变。对外版本目录只包含该安装器、full/delta nupkg、`releases.win.json` 与 SHA256 清单。GitHub Release 以 Setup 作为唯一面向用户的安装入口，不发布 portable ZIP；nupkg 和 release feed 仅供应用内更新使用：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\Package-HermesRelease.ps1 -Version 0.4.0
@@ -346,11 +347,14 @@ GitHub 发布前的仓库边界：
 
 ## 用户数据和隐私
 
-Hermes 的用户数据保存在：
+Hermes 的程序文件和用户数据严格分离：
 
 ```text
-%LOCALAPPDATA%\Hermes\
+程序：%LOCALAPPDATA%\Hermes\
+数据：%LOCALAPPDATA%\KiRinXC\Hermes\
 ```
+
+Windows 卸载由 Velopack 删除完整程序目录，默认不触碰独立数据目录。常规页“存储位置”展示两个实际路径并提供打开目录操作；“删除数据”使用 Hermes 主题确认层，确认后删除设置、密钥、历史和内置应用档案并立即退出，用户随后可继续从 Windows 设置卸载程序。正式安装器会在替换旧程序前先复制旧版数据；首实例启动再完成兼容迁移、写入迁移标记并移除旧副本，避免覆盖安装或卸载时误删。
 
 主要文件：
 
@@ -387,6 +391,7 @@ Hermes 的用户数据保存在：
 
 | 日期 | 变更 | 影响范围 |
 | --- | --- | --- |
+| 2026-08-15 | 保留 v0.4.0 一键安装，不再引入自定义安装目录：将用户数据从 Velopack 程序目录迁移到 `%LOCALAPPDATA%\KiRinXC\Hermes\`，正常卸载只删除程序；常规页新增程序/数据路径、打开目录和经二次确认的“删除数据并退出”；公开 Setup 增加原生数据保护引导层，在同版本覆盖旧目录前复制设置、密钥、历史及 Codex 档案，首实例再完成迁移清理。 | Infrastructure / Settings / Shell / Uninstall / Migration / Setup / UI / Tests / Documentation |
 | 2026-08-14 | 将 v0.4.0 对外发行入口统一为 `Hermes-win-Setup.exe`：发行目录和 GitHub Release 不再包含 portable ZIP，只保留安装程序、应用内更新所需的 full/delta nupkg、`releases.win.json` 与校验文件。 | Release / Packaging / Documentation / Tests |
 | 2026-08-14 | 将软件更新交互收敛为卡片右侧单按钮：按钮沿用“测试连接”样式执行检查，最新版与错误在卡片内就地反馈；发现新版后同一按钮切换为蓝色“更新”，点击即开始保存、下载、退出安装与自动重启，并移除更新弹窗。 | Release / Shell / UI / Accessibility / Tests / 文档维护 |
 | 2026-08-14 | 将常规页“软件更新”改为可点击入口：打开不压暗背景的 Hermes 主题弹窗后检查并展示版本，“安装”作为唯一最终确认；下载完成后由 Velopack 自动退出、安装并重新打开 Hermes，同时移除界面中的运行方式限制文案。 | Release / Infrastructure / Shell / UI / Accessibility / Tests / 文档维护 |

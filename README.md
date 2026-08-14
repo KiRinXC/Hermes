@@ -36,7 +36,9 @@ Hermes 是一个 Windows 全局 AI 划词翻译助手。选中英文内容后，
 Hermes-win-Setup.exe
 ```
 
-安装程序是 GitHub Release 中唯一面向用户的下载入口，随包携带 .NET Runtime。安装后 Hermes 会自动启动；发现后续版本时，可在“设置 → 常规”中确认下载、安装并重启。
+安装程序是 GitHub Release 中唯一面向用户的下载入口，随包携带 .NET Runtime。程序文件安装在 `%LOCALAPPDATA%\Hermes\`，安装后 Hermes 会自动启动；发现后续版本时，可在“设置 → 常规”中确认下载、安装并重启。
+
+在 Windows“设置 → 应用”中卸载 Hermes 会完整删除程序文件，但默认保留 `%LOCALAPPDATA%\KiRinXC\Hermes\` 下的设置、密钥、历史和 Codex 档案。需要彻底清理时，可先在“设置 → 常规 → 存储位置”中点击“删除数据”，Hermes 会在删除后退出，再执行 Windows 卸载即可。该区域也能直接打开程序目录和用户数据目录。
 
 如果你是从源码构建，当前本机验证包位于：
 
@@ -101,7 +103,8 @@ Windows 上不同应用暴露选区的方式并不一致，所以 Hermes 采用�
 
 - 只有用户主动按快捷键、点击悬浮按钮或选择翻译剪贴板时，Hermes 才会发送文本。
 - API Key 不写入 `settings.json`，而是使用 Windows DPAPI 加密保存。
-- Codex 的完整 config + auth 档案同样使用当前 Windows 用户的 DPAPI 加密，保存在 `%LOCALAPPDATA%\Hermes\apps\codex-auth-switch-sync\`；不会随电脑同步，每台电脑需分别初始化。
+- Codex 的完整 config + auth 档案同样使用当前 Windows 用户的 DPAPI 加密，保存在 `%LOCALAPPDATA%\KiRinXC\Hermes\apps\codex-auth-switch-sync\`；不会随电脑同步，每台电脑需分别初始化。
+- 用户数据与程序安装目录彼此独立；正常卸载默认保留用户数据，常规页可查看两个实际路径或删除全部用户数据。
 - 翻译历史默认关闭。
 - 日志默认不记录完整原文和译文，也会脱敏 API Key 形态的内容。
 - 可在设置中维护排除应用和敏感应用列表。
@@ -113,6 +116,8 @@ Windows 上不同应用暴露选区的方式并不一致，所以 Hermes 采用�
 ```powershell
 $env:HERMES_DOTNET_ROOT = "D:\Code\Env\dotnet"
 ```
+
+普通构建和测试只需要 .NET SDK。生成正式安装器时还需要 w64devkit 的 `g++` 与 `windres`；打包脚本会从 `PATH`、`C:\Code\Env\C\w64devkit\bin` 和 `D:\Code\Env\C\w64devkit\bin` 依次查找。
 
 常用命令：
 
@@ -141,7 +146,7 @@ artifacts\release\v0.4.0\
 - `releases.win.json`
 - `checksums.txt`
 
-`Hermes-win-Setup.exe` 是用户唯一需要下载的安装入口；`.nupkg` 与 `releases.win.json` 是应用内更新使用的后台资产。
+`Hermes-win-Setup.exe` 是用户唯一需要下载的安装入口。它会在 Velopack 覆盖旧程序目录前先保护旧版用户数据，因此可直接覆盖安装同版本的修订包；`.nupkg` 与 `releases.win.json` 是应用内更新使用的后台资产。
 
 ## GitHub Release 流程
 

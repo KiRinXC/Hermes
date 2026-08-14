@@ -44,6 +44,7 @@ public static class SettingsWindowOptionTests
         suite.Add("settings clear history also clears diagnostics", ClearHistoryAlsoClearsDiagnostics);
         suite.Add("settings window keeps explanatory microcopy concise", WindowKeepsExplanatoryMicrocopyConcise);
         suite.Add("settings window keeps privacy options in general", WindowKeepsPrivacyOptionsInGeneral);
+        suite.Add("settings general page separates program and user data", WindowSeparatesProgramAndUserData);
         suite.Add("settings general page provides manual update controls", WindowGeneralPageProvidesManualUpdateControls);
     }
 
@@ -96,6 +97,27 @@ public static class SettingsWindowOptionTests
         TestAssert.True(saveOriginalStart > generalStart && saveOriginalStart < translationStart);
         TestAssert.False(xaml.Contains("<TabItem Header=\"隐私\">", StringComparison.Ordinal));
         TestAssert.Equal(5, xaml.Split("<TabItem Header=", StringSplitOptions.None).Length - 1);
+    }
+
+    private static void WindowSeparatesProgramAndUserData()
+    {
+        var xaml = File.ReadAllText(FindRepoFile("src/Hermes.Windows/Shell/SettingsWindow.xaml"));
+        var code = File.ReadAllText(FindRepoFile("src/Hermes.Windows/Shell/SettingsWindow.xaml.cs"));
+        var generalStart = xaml.IndexOf("<TabItem Header=\"常规\">", StringComparison.Ordinal);
+        var translationStart = xaml.IndexOf("<TabItem Header=\"翻译\">", StringComparison.Ordinal);
+        var storageStart = xaml.IndexOf("Text=\"存储位置\"", StringComparison.Ordinal);
+
+        TestAssert.True(storageStart > generalStart && storageStart < translationStart);
+        TestAssert.Contains("x:Name=\"ProgramPathText\"", xaml);
+        TestAssert.Contains("x:Name=\"UserDataPathText\"", xaml);
+        TestAssert.Contains("Text=\"卸载时保留\"", xaml);
+        TestAssert.Contains("Click=\"OpenProgramDirectory_Click\"", xaml);
+        TestAssert.Contains("Click=\"OpenUserDataDirectory_Click\"", xaml);
+        TestAssert.Contains("Click=\"DeleteUserData_Click\"", xaml);
+        TestAssert.Contains("Settings.DangerButton", xaml);
+        TestAssert.Contains("AppPaths.DeleteForShutdown();", code);
+        TestAssert.Contains("ConfirmDestructiveAsync", code);
+        TestAssert.Contains("System.Windows.Application.Current.Shutdown();", code);
     }
 
     private static void WindowGeneralPageProvidesManualUpdateControls()

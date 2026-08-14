@@ -15,6 +15,7 @@ var suite = new TestSuite();
 CodexAuthSwitchSyncTests.Register(suite);
 SettingsTests.Register(suite);
 RedactorTests.Register(suite);
+UserDataMigrationTests.Register(suite);
 SelectionTextValidatorTests.Register(suite);
 SelectionCandidateServiceTests.Register(suite);
 SelectionReadResponsivenessTests.Register(suite);
