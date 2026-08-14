@@ -25,6 +25,9 @@ public static class CodexAuthSwitchSyncTests
         suite.Add("codex provider alignment is case sensitive", ProviderAlignmentIsCaseSensitive);
         suite.Add("codex session summary separates visible internal and archived rollouts", SessionSummarySeparatesRolloutKinds);
         suite.Add("codex browser login locates native CLI from npm installation", BrowserLoginLocatesNativeCliFromNpmInstallation);
+        suite.Add("codex process display distinguishes editor extension cli and owned login", ProcessDisplayDistinguishesSources);
+        suite.Add("codex browser login is cancelable and crash recoverable", BrowserLoginIsCancelableAndRecoverable);
+        suite.Add("Hermes update checks automatically and installs only after explicit update action", AutomaticUpdateUsesGithubVelopackReleases);
         suite.Add("codex app UI uses Hermes styles and explicit secret labels", AppUiUsesHermesStylesAndSecretLabels);
     }
 
@@ -339,6 +342,18 @@ public static class CodexAuthSwitchSyncTests
         var protectedDatabase = Path.Combine(backup, "sqlite", "state_5.sqlite.dat");
         TestAssert.True(File.Exists(protectedDatabase));
         TestAssert.False(File.ReadAllBytes(protectedDatabase).AsSpan().StartsWith("SQLite format 3"u8));
+        verify.Close();
+
+        service.Restore(backup);
+        var restoredLine = File.ReadLines(rollout).First();
+        TestAssert.Equal(
+            "OpenAI",
+            JsonNode.Parse(restoredLine)?["payload"]?["model_provider"]?.GetValue<string>());
+        using var restored = new SqliteConnection($"Data Source={database};Mode=ReadOnly;Pooling=False");
+        restored.Open();
+        using var restoredCommand = restored.CreateCommand();
+        restoredCommand.CommandText = "SELECT model_provider FROM threads WHERE id = 'thread-1'";
+        TestAssert.Equal("OpenAI", Convert.ToString(restoredCommand.ExecuteScalar()));
     }
 
     private static void SessionSummarySeparatesRolloutKinds()
@@ -428,6 +443,70 @@ public static class CodexAuthSwitchSyncTests
         TestAssert.Equal(executable, result);
     }
 
+    private static void ProcessDisplayDistinguishesSources()
+    {
+        TestAssert.Equal(
+            "VS Code Codex 扩展（PID 42）",
+            CodexProcessGuard.DescribeProcess(
+                "codex",
+                42,
+                @"C:\Users\test\.vscode\extensions\openai.chatgpt-1.0\bin\windows-x86_64\codex.exe",
+                ownedLogin: false));
+        TestAssert.Equal(
+            "Codex CLI（PID 43）",
+            CodexProcessGuard.DescribeProcess("codex", 43, @"C:\Tools\codex.exe", ownedLogin: false));
+        TestAssert.Equal(
+            "Hermes 浏览器登录（PID 44）",
+            CodexProcessGuard.DescribeProcess("codex", 44, @"C:\Tools\codex.exe", ownedLogin: true));
+    }
+
+    private static void BrowserLoginIsCancelableAndRecoverable()
+    {
+        var launcher = File.ReadAllText(FindRepoFile(
+            "src/Hermes.Windows/Apps/CodexAuthSwitchSync/Services/CodexBrowserLoginLauncher.cs"));
+        var service = File.ReadAllText(FindRepoFile(
+            "src/Hermes.Windows/Apps/CodexAuthSwitchSync/Services/CodexAuthSwitchService.cs"));
+        var job = File.ReadAllText(FindRepoFile(
+            "src/Hermes.Windows/Apps/CodexAuthSwitchSync/Services/WindowsProcessJob.cs"));
+        TestAssert.Contains("LoginAsync(string codexHome, CancellationToken cancellationToken)", launcher);
+        TestAssert.Contains("WaitForExitAsync(linked.Token)", launcher);
+        TestAssert.Contains("Kill(entireProcessTree: true)", launcher);
+        TestAssert.Contains("JobObjectLimitKillOnJobClose", job);
+        TestAssert.Contains("BrowserLoginJournalPath", service);
+        TestAssert.Contains("TryRecoverInterruptedBrowserLogin", service);
+        TestAssert.Contains("RestoreProfile(CodexAuthMode.ChatGpt", service);
+    }
+
+    private static void AutomaticUpdateUsesGithubVelopackReleases()
+    {
+        var program = File.ReadAllText(FindRepoFile("src/Hermes.Windows/Program.cs"));
+        var updater = File.ReadAllText(FindRepoFile("src/Hermes.Windows/Infrastructure/AutomaticUpdateService.cs"));
+        var app = File.ReadAllText(FindRepoFile("src/Hermes.Windows/App.xaml.cs"));
+        var settings = File.ReadAllText(FindRepoFile("src/Hermes.Windows/Shell/SettingsWindow.xaml.cs"));
+        var packageScript = File.ReadAllText(FindRepoFile("scripts/Package-HermesRelease.ps1"));
+        TestAssert.True(
+            program.IndexOf("VelopackApp.Build()", StringComparison.Ordinal)
+            < program.IndexOf("new App()", StringComparison.Ordinal));
+        TestAssert.Contains("SetAutoApplyOnStartup(false)", program);
+        TestAssert.Contains("https://github.com/KiRinXC/Hermes", updater);
+        TestAssert.Contains("CheckForUpdatesAsync", updater);
+        TestAssert.Contains("DownloadUpdatesAsync", updater);
+        TestAssert.Contains("ApplyUpdatesAndRestart", updater);
+        TestAssert.Contains("awaits user confirmation", updater);
+        TestAssert.False(app.Contains("InstallAndRestartAsync", StringComparison.Ordinal));
+        TestAssert.Contains("ShowUpdateSettingsWindow", app);
+        TestAssert.Contains("UpdateAction_Click", settings);
+        TestAssert.Contains("ShowGeneralPage", settings);
+        var installHandlerStart = settings.IndexOf("private async void UpdateAction_Click", StringComparison.Ordinal);
+        var installHandlerEnd = settings.IndexOf("private async Task<bool> SaveSettingsAsync", installHandlerStart, StringComparison.Ordinal);
+        TestAssert.True(installHandlerStart >= 0 && installHandlerEnd > installHandlerStart);
+        var installHandler = settings[installHandlerStart..installHandlerEnd];
+        TestAssert.Contains("InstallAndRestartAsync", installHandler);
+        TestAssert.False(installHandler.Contains("ConfirmAsync(", StringComparison.Ordinal));
+        TestAssert.Contains("vpk pack", packageScript);
+        TestAssert.Contains("releases.win.json", packageScript);
+    }
+
     private static void AppUiUsesHermesStylesAndSecretLabels()
     {
         var settings = File.ReadAllText(FindRepoFile("src/Hermes.Windows/Shell/SettingsWindow.xaml"));
@@ -462,7 +541,17 @@ public static class CodexAuthSwitchSyncTests
         var codeBehind = File.ReadAllText(FindRepoFile("src/Hermes.Windows/Apps/CodexAuthSwitchSync/UI/CodexAuthSwitchSyncView.xaml.cs"));
         TestAssert.Contains("IsVisibleChanged", codeBehind);
         TestAssert.Contains("ResetApiEditor", codeBehind);
-        TestAssert.Contains("_service.LoginChatGptWithBrowser", codeBehind);
+        TestAssert.Contains("_service.LoginChatGptWithBrowserAsync", codeBehind);
+        TestAssert.Contains("x:Name=\"BusyCancelButton\"", app);
+        TestAssert.Contains("x:Name=\"BusySpinnerRotateTransform\"", app);
+        TestAssert.False(app.Contains("<ProgressBar", StringComparison.Ordinal));
+        TestAssert.Contains("Background=\"Transparent\"", app);
+        TestAssert.False(app.Contains("Background=\"#8A000000\"", StringComparison.Ordinal));
+        TestAssert.Contains("CancelBrowserLogin", codeBehind);
+        TestAssert.Contains("SystemParameters.ClientAreaAnimation", codeBehind);
+        TestAssert.Contains("StartBusyVisuals", codeBehind);
+        TestAssert.Contains("ContentScrollViewer.IsHitTestVisible", codeBehind);
+        TestAssert.False(codeBehind.Contains("\n        IsHitTestVisible = !busy;", StringComparison.Ordinal));
         TestAssert.Contains("RenderChatGptActions", codeBehind);
         TestAssert.Contains("isCurrent && !hasProfile", codeBehind);
         TestAssert.False(codeBehind.Contains("更新当前登录", StringComparison.Ordinal));

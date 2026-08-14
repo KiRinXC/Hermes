@@ -1,14 +1,38 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 
 namespace Hermes.Windows.Apps.CodexAuthSwitchSync.Services;
 
-internal sealed class CodexBrowserLoginLauncher
+internal sealed class CodexBrowserLoginLauncher : IDisposable
 {
-    private const int LoginTimeoutMilliseconds = 15 * 60 * 1000;
+    private static readonly TimeSpan LoginTimeout = TimeSpan.FromMinutes(15);
+    private readonly object _gate = new();
+    private Process? _activeProcess;
+    private WindowsProcessJob? _activeJob;
+    private bool _disposed;
 
-    public void Login(string codexHome)
+    public int? ActiveProcessId
     {
+        get
+        {
+            lock (_gate)
+            {
+                try
+                {
+                    return _activeProcess is { HasExited: false } process ? process.Id : null;
+                }
+                catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException)
+                {
+                    return null;
+                }
+            }
+        }
+    }
+
+    public async Task LoginAsync(string codexHome, CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         var executable = FindExecutable()
             ?? throw new CodexSwitchException(
                 "未找到可用的 Codex 登录程序。请安装 Codex CLI，或安装并启用官方 Codex IDE 扩展后重试。");
@@ -18,16 +42,52 @@ internal sealed class CodexBrowserLoginLauncher
         {
             using var process = Process.Start(startInfo)
                 ?? throw new CodexSwitchException("无法启动 Codex 官方浏览器登录流程。");
-            if (!process.WaitForExit(LoginTimeoutMilliseconds))
+            WindowsProcessJob job;
+            try
+            {
+                job = WindowsProcessJob.Attach(process);
+            }
+            catch
             {
                 TryStop(process);
-                throw new CodexSwitchException("等待 ChatGPT 浏览器认证超时。请重新点击“浏览器登录”后完成认证。");
+                throw;
             }
 
-            if (process.ExitCode != 0)
+            using (job)
             {
-                throw new CodexSwitchException("ChatGPT 浏览器认证未完成。当前 Codex 配置和认证已恢复，请重试。");
+                lock (_gate)
+                {
+                    ObjectDisposedException.ThrowIf(_disposed, this);
+                    _activeProcess = process;
+                    _activeJob = job;
+                }
+
+                using var timeout = new CancellationTokenSource(LoginTimeout);
+                using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
+                try
+                {
+                    await process.WaitForExitAsync(linked.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    TryStop(process);
+                    throw;
+                }
+                catch (OperationCanceledException)
+                {
+                    TryStop(process);
+                    throw new CodexSwitchException("等待 ChatGPT 浏览器认证超时。当前 Codex 配置与认证已恢复，请重试。");
+                }
+
+                if (process.ExitCode != 0)
+                {
+                    throw new CodexSwitchException("ChatGPT 浏览器认证未完成。当前 Codex 配置与认证已恢复，请重试。");
+                }
             }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (CodexSwitchException)
         {
@@ -37,6 +97,40 @@ internal sealed class CodexBrowserLoginLauncher
         {
             throw new CodexSwitchException("无法启动 Codex 官方浏览器登录流程。", ex);
         }
+        finally
+        {
+            lock (_gate)
+            {
+                _activeProcess = null;
+                _activeJob = null;
+            }
+        }
+    }
+
+    public void Dispose()
+    {
+        Process? process;
+        WindowsProcessJob? job;
+        lock (_gate)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            process = _activeProcess;
+            job = _activeJob;
+            _activeProcess = null;
+            _activeJob = null;
+        }
+
+        if (process is not null)
+        {
+            TryStop(process);
+        }
+
+        job?.Dispose();
     }
 
     internal static string? FindExecutable(string? pathVariable = null, string? userProfile = null)
@@ -182,16 +276,19 @@ internal sealed class CodexBrowserLoginLauncher
     {
         try
         {
-            process.Kill(entireProcessTree: true);
-            process.WaitForExit();
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+                process.WaitForExit(milliseconds: 5000);
+            }
         }
         catch (InvalidOperationException)
         {
-            // The process exited between the timeout and the stop request.
+            // The process exited between inspection and the stop request.
         }
-        catch (System.ComponentModel.Win32Exception)
+        catch (Win32Exception)
         {
-            // The timeout error is still the useful message for the user.
+            // Closing the job handle is the final process-tree cleanup fallback.
         }
     }
 

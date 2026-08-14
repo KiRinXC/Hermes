@@ -39,13 +39,22 @@ public sealed class TrayService : IDisposable
         _notifyIcon.Text = _paused ? "Hermes（已暂停）" : "Hermes";
     }
 
-    public void ShowBalloon(string title, string message)
+    public void ShowBalloon(string title, string message, Action? activatedAction = null)
     {
         System.Windows.Application.Current.Dispatcher.Invoke(() =>
         {
             _notificationWindow?.Close();
             _notificationWindow = new TrayNotificationWindow(title, message);
-            _notificationWindow.SettingsRequested += (_, _) => SettingsRequested?.Invoke(this, EventArgs.Empty);
+            _notificationWindow.SettingsRequested += (_, _) =>
+            {
+                if (activatedAction is not null)
+                {
+                    activatedAction();
+                    return;
+                }
+
+                SettingsRequested?.Invoke(this, EventArgs.Empty);
+            };
             _notificationWindow.Closed += (_, _) => _notificationWindow = null;
             _notificationWindow.Show();
         });

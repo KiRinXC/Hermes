@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 
 namespace Hermes.Windows.Apps.CodexAuthSwitchSync.Services;
@@ -18,6 +19,10 @@ internal sealed class CodexOperationLock : IDisposable
         locations.EnsureCreated();
         var path = Path.Combine(locations.AppDataDirectory, "operation.lock");
         try
+        {
+            return Create(path);
+        }
+        catch (IOException) when (TryReclaimDeadOwner(path))
         {
             return Create(path);
         }
@@ -53,5 +58,46 @@ internal sealed class CodexOperationLock : IDisposable
         writer.Flush();
         stream.Flush(flushToDisk: true);
         return new CodexOperationLock(path, stream);
+    }
+
+    private static bool TryReclaimDeadOwner(string path)
+    {
+        try
+        {
+            if (!File.Exists(path))
+            {
+                return false;
+            }
+
+            var content = File.ReadAllText(path).Trim();
+            if (!int.TryParse(content, out var processId) || processId <= 0)
+            {
+                return false;
+            }
+
+            try
+            {
+                using var process = Process.GetProcessById(processId);
+                if (!process.HasExited)
+                {
+                    return false;
+                }
+            }
+            catch (ArgumentException)
+            {
+                // The owning Hermes process no longer exists.
+            }
+
+            File.Delete(path);
+            return true;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 }

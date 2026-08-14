@@ -9,6 +9,7 @@ namespace Hermes.Windows.Apps.CodexAuthSwitchSync.Services;
 
 public sealed class CodexSessionSyncService
 {
+    private const string SqliteLocationBackupFile = "sqlite-location.dat";
     private readonly CodexLocations _locations;
 
     public CodexSessionSyncService(CodexLocations locations)
@@ -50,6 +51,9 @@ public sealed class CodexSessionSyncService
             var sqliteDirectory = Path.Combine(backupDirectory, "sqlite");
             Directory.CreateDirectory(sqliteDirectory);
             databaseBackup = Path.Combine(sqliteDirectory, "state_5.sqlite.dat");
+            AtomicFile.WriteAllBytes(
+                Path.Combine(backupDirectory, SqliteLocationBackupFile),
+                CodexDpapi.Protect(Encoding.UTF8.GetBytes(database)));
             BackupDatabaseProtected(database, databaseBackup);
         }
 
@@ -105,6 +109,51 @@ public sealed class CodexSessionSyncService
             }
 
             throw;
+        }
+    }
+
+    public void Restore(string backupDirectory)
+    {
+        var protectedDatabase = Path.Combine(backupDirectory, "sqlite", "state_5.sqlite.dat");
+        var protectedLocation = Path.Combine(backupDirectory, SqliteLocationBackupFile);
+        if (File.Exists(protectedDatabase) && File.Exists(protectedLocation))
+        {
+            var database = Encoding.UTF8.GetString(CodexDpapi.Unprotect(File.ReadAllBytes(protectedLocation)));
+            if (string.IsNullOrWhiteSpace(database) || !Path.IsPathRooted(database))
+            {
+                throw new CodexSwitchException("Codex SQLite 恢复位置无效。");
+            }
+
+            RestoreProtectedDatabase(protectedDatabase, Path.GetFullPath(database));
+        }
+
+        var rolloutsBackup = Path.Combine(backupDirectory, "rollouts.dat");
+        if (!File.Exists(rolloutsBackup))
+        {
+            return;
+        }
+
+        var clear = CodexDpapi.Unprotect(File.ReadAllBytes(rolloutsBackup));
+        var entries = JsonSerializer.Deserialize<RolloutBackupEntry[]>(clear) ?? [];
+        foreach (var entry in entries)
+        {
+            var path = Path.GetFullPath(entry.Path);
+            if (!IsManagedRolloutPath(path))
+            {
+                throw new CodexSwitchException("Codex 会话恢复记录指向了非托管文件。");
+            }
+
+            if (!File.Exists(path))
+            {
+                continue;
+            }
+
+            var original = Convert.FromBase64String(entry.OriginalFirstLine);
+            var current = ReadFirstLine(path);
+            if (!current.AsSpan().SequenceEqual(original))
+            {
+                ReplaceFirstLine(path, current, original);
+            }
         }
     }
 
@@ -396,6 +445,18 @@ public sealed class CodexSessionSyncService
 
     private static void TryRestoreProtectedDatabase(string backupPath, string destinationPath)
     {
+        try
+        {
+            RestoreProtectedDatabase(backupPath, destinationPath);
+        }
+        catch
+        {
+            // Best effort rollback; the caller still receives the original failure.
+        }
+    }
+
+    private static void RestoreProtectedDatabase(string backupPath, string destinationPath)
+    {
         var clearPath = backupPath + $".restore-{Guid.NewGuid():N}";
         try
         {
@@ -408,10 +469,6 @@ public sealed class CodexSessionSyncService
             }.ToString());
             destination.Open();
             source.BackupDatabase(destination);
-        }
-        catch
-        {
-            // Best effort rollback; the caller still receives the original failure.
         }
         finally
         {
@@ -459,6 +516,22 @@ public sealed class CodexSessionSyncService
                 yield return path;
             }
         }
+    }
+
+    private bool IsManagedRolloutPath(string path)
+    {
+        foreach (var directoryName in new[] { "sessions", "archived_sessions" })
+        {
+            var root = Path.GetFullPath(Path.Combine(_locations.CodexHome, directoryName))
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                + Path.DirectorySeparatorChar;
+            if (path.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static byte[] ReadFirstLine(string path)
@@ -544,11 +617,9 @@ public sealed class CodexSessionSyncService
 
     private static void BackupRolloutFirstLines(IReadOnlyCollection<RolloutChange> changes, string backupDirectory)
     {
-        var manifest = changes.Select(change => new
-        {
+        var manifest = changes.Select(change => new RolloutBackupEntry(
             change.Path,
-            OriginalFirstLine = Convert.ToBase64String(change.Original)
-        });
+            Convert.ToBase64String(change.Original)));
         var clear = JsonSerializer.SerializeToUtf8Bytes(manifest, new JsonSerializerOptions { WriteIndented = true });
         var protectedBytes = CodexDpapi.Protect(clear);
         AtomicFile.WriteAllBytes(Path.Combine(backupDirectory, "rollouts.dat"), protectedBytes);
@@ -559,4 +630,6 @@ public sealed class CodexSessionSyncService
         CodexSessionComposition Composition);
 
     private sealed record RolloutChange(string Path, byte[] Original, byte[] Replacement);
+
+    private sealed record RolloutBackupEntry(string Path, string OriginalFirstLine);
 }

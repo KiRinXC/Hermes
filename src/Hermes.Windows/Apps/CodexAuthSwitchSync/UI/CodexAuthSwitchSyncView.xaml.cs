@@ -2,6 +2,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using Hermes.Windows.Apps.CodexAuthSwitchSync.Domain;
 using Hermes.Windows.Apps.CodexAuthSwitchSync.Services;
 using Hermes.Windows.Apps.Contracts;
@@ -11,6 +12,7 @@ namespace Hermes.Windows.Apps.CodexAuthSwitchSync.UI;
 public partial class CodexAuthSwitchSyncView : System.Windows.Controls.UserControl
 {
     private readonly CodexAuthSwitchService _service;
+    private CancellationTokenSource? _browserLoginCancellation;
     private bool _busy;
     private CodexStatus? _status;
 
@@ -23,6 +25,7 @@ public partial class CodexAuthSwitchSyncView : System.Windows.Controls.UserContr
         {
             if (args.NewValue is false)
             {
+                CancelBrowserLogin();
                 ResetApiEditor();
             }
         };
@@ -242,19 +245,69 @@ public partial class CodexAuthSwitchSyncView : System.Windows.Controls.UserContr
         return succeeded;
     }
 
-    private void SetBusy(bool busy, string message)
+    private void SetBusy(bool busy, string message, bool canCancel = false)
     {
         _busy = busy;
-        BusyOverlay.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
         BusyText.Text = message;
-        IsHitTestVisible = !busy;
+        ContentScrollViewer.IsHitTestVisible = !busy;
         BusyOverlay.IsHitTestVisible = busy;
+        BusyCancelButton.Visibility = busy && canCancel ? Visibility.Visible : Visibility.Collapsed;
+        BusyCancelButton.IsEnabled = busy && canCancel;
+        if (busy)
+        {
+            BusyOverlay.Visibility = Visibility.Visible;
+            StartBusyVisuals();
+        }
+        else
+        {
+            StopBusyVisuals();
+            BusyOverlay.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void StartBusyVisuals()
+    {
+        StopBusyVisuals();
+        BusyOverlay.Opacity = 1;
+        BusyCardScaleTransform.ScaleX = 1;
+        BusyCardScaleTransform.ScaleY = 1;
+        BusySpinnerRotateTransform.Angle = 0;
+        if (!SystemParameters.ClientAreaAnimation)
+        {
+            return;
+        }
+
+        BusyOverlay.BeginAnimation(
+            OpacityProperty,
+            new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(180))
+            {
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            });
+        var scaleAnimation = new DoubleAnimation(0.97, 1, TimeSpan.FromMilliseconds(180))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+        BusyCardScaleTransform.BeginAnimation(ScaleTransform.ScaleXProperty, scaleAnimation);
+        BusyCardScaleTransform.BeginAnimation(ScaleTransform.ScaleYProperty, scaleAnimation.Clone());
+        BusySpinnerRotateTransform.BeginAnimation(
+            RotateTransform.AngleProperty,
+            new DoubleAnimation(0, 360, TimeSpan.FromMilliseconds(900))
+            {
+                RepeatBehavior = RepeatBehavior.Forever
+            });
+    }
+
+    private void StopBusyVisuals()
+    {
+        BusyOverlay.BeginAnimation(OpacityProperty, null);
+        BusyCardScaleTransform.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        BusyCardScaleTransform.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+        BusySpinnerRotateTransform.BeginAnimation(RotateTransform.AngleProperty, null);
     }
 
     private void ShowMessage(string message, bool success)
     {
         OperationStatusBorder.Visibility = Visibility.Visible;
-        OperationProgress.Visibility = Visibility.Collapsed;
         OperationStatusText.Text = message;
         OperationStatusText.Foreground = FindBrush(success ? "Settings.SuccessBrush" : "Settings.WarningBrush");
     }
@@ -271,10 +324,66 @@ public partial class CodexAuthSwitchSyncView : System.Windows.Controls.UserContr
             "Hermes 将先加密备份当前 Codex 配置与认证，然后调用官方 codex login 并打开浏览器。认证成功后会保存 ChatGPT 档案、切换到 ChatGPT，并同步本地会话 Provider。继续前请确认 Codex、ChatGPT、CLI 与 IDE 扩展已完全退出。",
             "继续登录"))
         {
-            await RunOperationAsync(
-                "请在浏览器中完成 ChatGPT 登录…",
-                _service.LoginChatGptWithBrowser);
+            await RunBrowserLoginAsync();
         }
+    }
+
+    private async Task RunBrowserLoginAsync()
+    {
+        _browserLoginCancellation?.Dispose();
+        _browserLoginCancellation = new CancellationTokenSource();
+        var cancellation = _browserLoginCancellation;
+        SetBusy(true, "请在浏览器中完成 ChatGPT 登录。", canCancel: true);
+        try
+        {
+            var result = await _service.LoginChatGptWithBrowserAsync(cancellation.Token);
+            ShowMessage(
+                $"登录完成：更新 {result.RolloutFilesUpdated} 个 rollout、{result.SqliteRowsUpdated} 条 SQLite 索引。",
+                success: true);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            ShowMessage("登录已取消，原 Codex 配置与认证已恢复。", success: true);
+        }
+        catch (Exception ex)
+        {
+            ShowMessage(UserMessage(ex), success: false);
+        }
+        finally
+        {
+            if (ReferenceEquals(_browserLoginCancellation, cancellation))
+            {
+                _browserLoginCancellation = null;
+            }
+
+            cancellation.Dispose();
+            SetBusy(false, string.Empty);
+            await RefreshStatusAsync();
+        }
+    }
+
+    private void BusyCancel_Click(object sender, RoutedEventArgs e) => CancelBrowserLogin();
+
+    private void UserControl_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == System.Windows.Input.Key.Escape && _browserLoginCancellation is not null)
+        {
+            CancelBrowserLogin();
+            e.Handled = true;
+        }
+    }
+
+    private void CancelBrowserLogin()
+    {
+        var cancellation = _browserLoginCancellation;
+        if (cancellation is null || cancellation.IsCancellationRequested)
+        {
+            return;
+        }
+
+        BusyCancelButton.IsEnabled = false;
+        BusyText.Text = "正在取消并恢复原配置…";
+        cancellation.Cancel();
     }
 
     private void ConfigureApi_Click(object sender, RoutedEventArgs e)

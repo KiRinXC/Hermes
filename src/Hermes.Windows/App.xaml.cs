@@ -36,7 +36,12 @@ public partial class App : System.Windows.Application
     private ITranslationService? _translationService;
     private TriggerDiagnosticsService? _triggerDiagnosticsService;
     private AppRegistry? _appRegistry;
+    private CodexAuthSwitchService? _codexService;
+    private AutomaticUpdateService? _automaticUpdateService;
+    private readonly CancellationTokenSource _shutdownCancellation = new();
+    private Task? _automaticUpdateTask;
     private SettingsWindow? _settingsWindow;
+    private string? _lastNotifiedUpdateVersion;
     private bool _paused;
 
     protected override async void OnStartup(StartupEventArgs e)
@@ -64,12 +69,15 @@ public partial class App : System.Windows.Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        _shutdownCancellation.Cancel();
         _translationCoordinator?.CloseAll();
+        _codexService?.Dispose();
         _hotkeyService?.Dispose();
         _keyboardHookService?.Dispose();
         _mouseHookService?.Dispose();
         _trayService?.Dispose();
         _singleInstanceGuard?.Dispose();
+        _shutdownCancellation.Dispose();
         base.OnExit(e);
     }
 
@@ -92,14 +100,14 @@ public partial class App : System.Windows.Application
         var codexProfiles = new CodexProfileStore(codexLocations);
         var codexSessions = new CodexSessionSyncService(codexLocations);
         var codexProcessGuard = new CodexProcessGuard();
-        var codexService = new CodexAuthSwitchService(
+        _codexService = new CodexAuthSwitchService(
             codexLocations,
             codexProfiles,
             codexSessions,
             codexProcessGuard,
             _logger);
         _appRegistry = new AppRegistry();
-        _appRegistry.Register(new CodexAuthSwitchSyncApp(codexService));
+        _appRegistry.Register(new CodexAuthSwitchSyncApp(_codexService));
 
         var foregroundWindowService = new ForegroundWindowService(_settingsService);
         var uiAutomationProvider = new UiAutomationSelectionProvider(foregroundWindowService, _logger);
@@ -187,6 +195,9 @@ public partial class App : System.Windows.Application
         _trayService.ExitRequested += (_, _) => Shutdown();
         _trayService.Show();
 
+        _automaticUpdateService = new AutomaticUpdateService(_logger);
+        _automaticUpdateTask = MonitorAutomaticUpdatesAsync(_shutdownCancellation.Token);
+
         _settingsService.SettingsChanged += (_, settings) =>
         {
             ThemeResourceService.Apply(settings.Ui.Theme);
@@ -207,6 +218,57 @@ public partial class App : System.Windows.Application
 
         _trayService.ShowBalloon("Hermes", "已在后台运行。选中文本后按 Ctrl+Alt+E 可翻译。");
         ScheduleResumeTriggersAfterStartup();
+    }
+
+    private async Task MonitorAutomaticUpdatesAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(8), cancellationToken);
+            var firstIteration = true;
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                if (_automaticUpdateService is null)
+                {
+                    return;
+                }
+
+                var currentState = _automaticUpdateService.State;
+                var shouldCheck = !firstIteration
+                    || currentState.Status is HermesUpdateStatus.Idle or HermesUpdateStatus.Failed;
+                var state = shouldCheck
+                    ? await _automaticUpdateService.CheckForUpdatesAsync(cancellationToken)
+                    : currentState;
+                firstIteration = false;
+
+                if (state.Status is HermesUpdateStatus.Available or HermesUpdateStatus.ReadyToRestart
+                    && !string.IsNullOrWhiteSpace(state.AvailableVersion)
+                    && !string.Equals(
+                        _lastNotifiedUpdateVersion,
+                        state.AvailableVersion,
+                        StringComparison.Ordinal))
+                {
+                    _lastNotifiedUpdateVersion = state.AvailableVersion;
+                    var message = state.Status == HermesUpdateStatus.ReadyToRestart
+                        ? $"版本 {state.AvailableVersion} 已下载，可在“设置 → 常规”中确认安装。"
+                        : $"发现版本 {state.AvailableVersion}，可在“设置 → 常规”中确认更新。";
+                    await Dispatcher.InvokeAsync(() =>
+                        _trayService?.ShowBalloon(
+                            "Hermes 软件更新",
+                            message,
+                            ShowUpdateSettingsWindow));
+                }
+
+                await Task.Delay(TimeSpan.FromHours(6), cancellationToken);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            _logger?.Warning($"Automatic update monitor stopped. {ex.GetType().Name}: {ex.Message}");
+        }
     }
 
     private void ScheduleResumeTriggersAfterStartup()
@@ -268,6 +330,16 @@ public partial class App : System.Windows.Application
 
     private void ShowSettingsWindow()
     {
+        ShowSettingsWindow(showGeneral: false);
+    }
+
+    private void ShowUpdateSettingsWindow()
+    {
+        ShowSettingsWindow(showGeneral: true);
+    }
+
+    private void ShowSettingsWindow(bool showGeneral)
+    {
         if (_settingsService is null
             || _secretStorage is null
             || _translationService is null
@@ -275,6 +347,7 @@ public partial class App : System.Windows.Application
             || _historyService is null
             || _triggerDiagnosticsService is null
             || _appRegistry is null
+            || _automaticUpdateService is null
             || _logger is null)
         {
             return;
@@ -290,8 +363,14 @@ public partial class App : System.Windows.Application
                 _historyService,
                 _triggerDiagnosticsService,
                 _appRegistry,
+                _automaticUpdateService,
                 _logger);
             _settingsWindow.Closed += (_, _) => _settingsWindow = null;
+        }
+
+        if (showGeneral)
+        {
+            _settingsWindow.ShowGeneralPage();
         }
 
         BringSettingsWindowToFront();

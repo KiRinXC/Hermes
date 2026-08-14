@@ -912,7 +912,8 @@
                     </Button>
                 </Grid>
 
-                <TabControl Grid.Row="2"
+                <TabControl x:Name="SettingsTabs"
+                            Grid.Row="2"
                             Grid.RowSpan="2"
                             SelectionChanged="SettingsTabs_SelectionChanged"
                             Style="{StaticResource Settings.Tabs}">
@@ -988,6 +989,86 @@
                                             </DockPanel>
                                         </Border>
                                     </StackPanel>
+                                </Border>
+
+                                <Border Style="{StaticResource Settings.GroupCard}">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel VerticalAlignment="Center">
+                                            <TextBlock Text="软件更新" Style="{StaticResource Settings.Label}"/>
+                                            <TextBlock x:Name="UpdateStatusText"
+                                                       Margin="0,5,16,0"
+                                                       Style="{StaticResource Settings.Helper}"
+                                                       AutomationProperties.LiveSetting="Polite"/>
+                                        </StackPanel>
+                                        <Button x:Name="UpdateActionButton"
+                                                Grid.Column="1"
+                                                Width="112"
+                                                MinWidth="112"
+                                                Height="36"
+                                                Margin="16,0,0,0"
+                                                VerticalAlignment="Center"
+                                                Style="{StaticResource Settings.ApiTestButton}"
+                                                Click="UpdateAction_Click"
+                                                AutomationProperties.Name="检查软件更新">
+                                            <Grid MinWidth="86">
+                                                <StackPanel x:Name="UpdateCheckContent"
+                                                            Orientation="Horizontal"
+                                                            HorizontalAlignment="Center">
+                                                    <Viewbox Width="12" Height="12" Margin="0,0,9,0">
+                                                        <Path Stroke="{DynamicResource Settings.TextMutedBrush}"
+                                                              StrokeThickness="1.5"
+                                                              StrokeStartLineCap="Round"
+                                                              StrokeEndLineCap="Round"
+                                                              StrokeLineJoin="Round"
+                                                              Data="M12,3 L12,7 L8,7 M12,7 C11,4.2 8.5,2 5.8,2 C2.6,2 0,4.6 0,7.8 C0,11 2.6,13.6 5.8,13.6 C7.7,13.6 9.3,12.8 10.4,11.5"/>
+                                                    </Viewbox>
+                                                    <TextBlock x:Name="UpdateCheckButtonText" Text="检查更新"/>
+                                                </StackPanel>
+                                                <StackPanel x:Name="UpdateInstallContent"
+                                                            Orientation="Horizontal"
+                                                            HorizontalAlignment="Center"
+                                                            Visibility="Collapsed">
+                                                    <Path Width="13"
+                                                          Height="13"
+                                                          Margin="0,0,9,0"
+                                                          Stretch="Uniform"
+                                                          Stroke="#FFFFFFFF"
+                                                          StrokeThickness="1.7"
+                                                          StrokeStartLineCap="Round"
+                                                          StrokeEndLineCap="Round"
+                                                          StrokeLineJoin="Round"
+                                                          Data="M6.5,0 L6.5,8 M2.8,4.8 L6.5,8.5 L10.2,4.8 M1,12 L12,12"/>
+                                                    <TextBlock Text="更新"/>
+                                                </StackPanel>
+                                                <StackPanel x:Name="UpdateBusyContent"
+                                                            Orientation="Horizontal"
+                                                            HorizontalAlignment="Center"
+                                                            Visibility="Collapsed">
+                                                    <Path x:Name="UpdateActionSpinnerPath"
+                                                          Width="14"
+                                                          Height="14"
+                                                          Margin="0,0,8,0"
+                                                          Data="M7,0.8 A6.2,6.2 0 1 1 2.1,11.2"
+                                                          Stroke="{DynamicResource Settings.BlueSoftBrush}"
+                                                          StrokeThickness="1.8"
+                                                          StrokeStartLineCap="Round"
+                                                          StrokeEndLineCap="Round"
+                                                          Stretch="None">
+                                                        <Path.RenderTransform>
+                                                            <RotateTransform x:Name="UpdateActionSpinnerRotate"
+                                                                             CenterX="7"
+                                                                             CenterY="7"/>
+                                                        </Path.RenderTransform>
+                                                    </Path>
+                                                    <TextBlock x:Name="UpdateBusyButtonText" Text="检查中..."/>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Button>
+                                    </Grid>
                                 </Border>
                             </StackPanel>
                         </ScrollViewer>

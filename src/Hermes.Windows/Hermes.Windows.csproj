@@ -6,15 +6,17 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Resources\AppIcon.ico</ApplicationIcon>
+    <StartupObject>Hermes.Windows.Program</StartupObject>
     <AssemblyName>Hermes.Windows</AssemblyName>
     <RootNamespace>Hermes.Windows</RootNamespace>
-    <Version>0.3.0</Version>
-    <AssemblyVersion>0.3.0.0</AssemblyVersion>
-    <FileVersion>0.3.0.0</FileVersion>
+    <Version>0.4.0</Version>
+    <AssemblyVersion>0.4.0.0</AssemblyVersion>
+    <FileVersion>0.4.0.0</FileVersion>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.11" />
     <PackageReference Include="Tomlyn" Version="2.10.1" />
+    <PackageReference Include="Velopack" Version="1.2.0" />
     <Resource Include="Resources\Icons\FloatingButtonLight.svg" />
     <Resource Include="Resources\Icons\FloatingButtonDark.svg" />
     <Resource Include="Resources\AppIcon.ico" />

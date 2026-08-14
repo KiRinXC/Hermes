@@ -30,10 +30,14 @@ public partial class SettingsWindow : Window, IHermesConfirmationHost
     private readonly TranslationHistoryService _historyService;
     private readonly TriggerDiagnosticsService _triggerDiagnosticsService;
     private readonly AppRegistry _appRegistry;
+    private readonly AutomaticUpdateService _automaticUpdateService;
     private readonly AppLogger _logger;
+    private bool _isBusy;
     private bool _isLoadingSettings;
     private bool _apiKeyVisible;
     private bool _isRecordingHotkey;
+    private bool _isInstallingUpdate;
+    private bool _isUpdateSpinnerActive;
     private string? _hotkeyBeforeRecording;
     private TaskCompletionSource<bool>? _confirmationCompletion;
     private System.Windows.Threading.DispatcherTimer? _windowSizePersistTimer;
@@ -46,6 +50,7 @@ public partial class SettingsWindow : Window, IHermesConfirmationHost
         TranslationHistoryService historyService,
         TriggerDiagnosticsService triggerDiagnosticsService,
         AppRegistry appRegistry,
+        AutomaticUpdateService automaticUpdateService,
         AppLogger logger)
     {
         InitializeComponent();
@@ -56,7 +61,9 @@ public partial class SettingsWindow : Window, IHermesConfirmationHost
         _historyService = historyService;
         _triggerDiagnosticsService = triggerDiagnosticsService;
         _appRegistry = appRegistry;
+        _automaticUpdateService = automaticUpdateService;
         _logger = logger;
+        _automaticUpdateService.StateChanged += AutomaticUpdateService_StateChanged;
         AppsHost.Content = new AppsCenterView(appRegistry);
         _windowSizePersistTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(320) };
         _windowSizePersistTimer.Tick += (_, _) =>
@@ -67,12 +74,18 @@ public partial class SettingsWindow : Window, IHermesConfirmationHost
         ApplyStoredWindowSize();
         InitializeOptionSources();
         LoadSettings();
+        RenderUpdateState(_automaticUpdateService.State);
     }
 
     protected override void OnActivated(EventArgs e)
     {
         base.OnActivated(e);
         RefreshDiagnostics();
+    }
+
+    public void ShowGeneralPage()
+    {
+        SettingsTabs.SelectedIndex = 0;
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -96,6 +109,8 @@ public partial class SettingsWindow : Window, IHermesConfirmationHost
 
     protected override void OnClosed(EventArgs e)
     {
+        _automaticUpdateService.StateChanged -= AutomaticUpdateService_StateChanged;
+        SetUpdateActionSpinner(false);
         CompleteConfirmation(false);
         foreach (var participant in _appRegistry.Apps.OfType<ISettingsSaveParticipant>())
         {
@@ -110,6 +125,10 @@ public partial class SettingsWindow : Window, IHermesConfirmationHost
         UpdateRootShellClip();
         BeginEntranceAnimation();
         MoveThemeSegmentIndicator(animate: false);
+        if (_automaticUpdateService.State.Status == HermesUpdateStatus.Idle)
+        {
+            _ = _automaticUpdateService.CheckForUpdatesAsync(CancellationToken.None);
+        }
     }
 
     private void InitializeOptionSources()
@@ -173,6 +192,45 @@ public partial class SettingsWindow : Window, IHermesConfirmationHost
         finally
         {
             SetBusy(false);
+        }
+    }
+
+    private async void UpdateAction_Click(object sender, RoutedEventArgs e)
+    {
+        var updateState = _automaticUpdateService.State;
+        if (_isInstallingUpdate
+            || updateState.Status is HermesUpdateStatus.Checking or HermesUpdateStatus.Downloading)
+        {
+            return;
+        }
+
+        if (updateState.Status is not (HermesUpdateStatus.Available or HermesUpdateStatus.ReadyToRestart))
+        {
+            await _automaticUpdateService.CheckForUpdatesAsync(CancellationToken.None);
+            return;
+        }
+
+        _isInstallingUpdate = true;
+        SetBusy(true, "正在准备更新...");
+        try
+        {
+            if (!await SaveSettingsAsync())
+            {
+                return;
+            }
+
+            StatusText.Text = "正在安装更新...";
+            await _automaticUpdateService.InstallAndRestartAsync(CancellationToken.None);
+            if (_automaticUpdateService.State.Status == HermesUpdateStatus.Failed)
+            {
+                StatusText.Text = "更新失败，请稍后重试或查看日志。";
+            }
+        }
+        finally
+        {
+            _isInstallingUpdate = false;
+            SetBusy(false);
+            RenderUpdateState(_automaticUpdateService.State);
         }
     }
 
@@ -392,13 +450,116 @@ public partial class SettingsWindow : Window, IHermesConfirmationHost
 
     private void SetBusy(bool isBusy, string? message = null)
     {
+        _isBusy = isBusy;
         TestButton.IsEnabled = !isBusy;
         AdvancedClearHistoryButton.IsEnabled = !isBusy;
         SaveButton.IsEnabled = !isBusy;
+        RenderUpdateState(_automaticUpdateService.State);
         if (!string.IsNullOrWhiteSpace(message))
         {
             StatusText.Text = message;
         }
+    }
+
+    private void AutomaticUpdateService_StateChanged(object? sender, HermesUpdateState state)
+    {
+        if (Dispatcher.CheckAccess())
+        {
+            RenderUpdateState(state);
+            return;
+        }
+
+        _ = Dispatcher.BeginInvoke(() => RenderUpdateState(state));
+    }
+
+    private void RenderUpdateState(HermesUpdateState state)
+    {
+        if (UpdateStatusText is null)
+        {
+            return;
+        }
+
+        UpdateStatusText.SetResourceReference(
+            TextBlock.ForegroundProperty,
+            state.Status switch
+            {
+                HermesUpdateStatus.UpToDate => "Settings.SuccessBrush",
+                HermesUpdateStatus.Available or HermesUpdateStatus.ReadyToRestart => "Settings.BlueSoftBrush",
+                HermesUpdateStatus.Failed => "Settings.WarningBrush",
+                _ => "Settings.TextMutedBrush"
+            });
+
+        UpdateStatusText.Text = state.Status switch
+        {
+            HermesUpdateStatus.Idle => $"当前版本 v{state.CurrentVersion}",
+            HermesUpdateStatus.Checking => "正在检查更新...",
+            HermesUpdateStatus.UpToDate => $"当前已是最新版本 · v{state.CurrentVersion}",
+            HermesUpdateStatus.Available => $"发现新版本 v{state.AvailableVersion}",
+            HermesUpdateStatus.Downloading => $"正在下载 v{state.AvailableVersion} · {state.DownloadProgress}%",
+            HermesUpdateStatus.ReadyToRestart => $"新版本 v{state.AvailableVersion} 已准备好",
+            HermesUpdateStatus.Unsupported => $"当前版本 v{state.CurrentVersion}",
+            HermesUpdateStatus.Failed => "更新检查失败，点击重试",
+            _ => $"当前版本 v{state.CurrentVersion}"
+        };
+
+        var showInstall = state.Status is HermesUpdateStatus.Available or HermesUpdateStatus.ReadyToRestart;
+        var showBusy = _isInstallingUpdate
+            || state.Status is HermesUpdateStatus.Checking or HermesUpdateStatus.Downloading;
+        var usePrimaryStyle = showInstall
+            || _isInstallingUpdate
+            || state.Status == HermesUpdateStatus.Downloading;
+        UpdateActionButton.SetResourceReference(
+            FrameworkElement.StyleProperty,
+            usePrimaryStyle ? "Settings.PrimaryButton" : "Settings.ApiTestButton");
+        UpdateActionSpinnerPath.SetResourceReference(
+            System.Windows.Shapes.Shape.StrokeProperty,
+            usePrimaryStyle ? "Settings.SliderThumbBrush" : "Settings.BlueSoftBrush");
+        UpdateCheckContent.Visibility = !showInstall && !showBusy ? Visibility.Visible : Visibility.Collapsed;
+        UpdateInstallContent.Visibility = showInstall && !showBusy ? Visibility.Visible : Visibility.Collapsed;
+        UpdateBusyContent.Visibility = showBusy ? Visibility.Visible : Visibility.Collapsed;
+        UpdateCheckButtonText.Text = state.Status switch
+        {
+            HermesUpdateStatus.UpToDate => "再次检查",
+            HermesUpdateStatus.Failed => "重新检查",
+            _ => "检查更新"
+        };
+        UpdateBusyButtonText.Text = state.Status switch
+        {
+            HermesUpdateStatus.Checking => "检查中...",
+            HermesUpdateStatus.Downloading => $"下载中 {state.DownloadProgress}%",
+            _ => "准备中..."
+        };
+        UpdateActionButton.IsEnabled = !_isBusy && !showBusy;
+        var actionName = showInstall
+            ? "更新 Hermes"
+            : state.Status == HermesUpdateStatus.Failed
+                ? "重新检查软件更新"
+                : "检查软件更新";
+        System.Windows.Automation.AutomationProperties.SetName(UpdateActionButton, actionName);
+        SetUpdateActionSpinner(showBusy);
+    }
+
+    private void SetUpdateActionSpinner(bool active)
+    {
+        if (_isUpdateSpinnerActive == active)
+        {
+            return;
+        }
+
+        _isUpdateSpinnerActive = active;
+        UpdateActionSpinnerRotate.BeginAnimation(RotateTransform.AngleProperty, null);
+        UpdateActionSpinnerRotate.Angle = 0;
+        if (!active || !SystemParameters.ClientAreaAnimation)
+        {
+            return;
+        }
+
+        UpdateActionSpinnerRotate.BeginAnimation(
+            RotateTransform.AngleProperty,
+            new DoubleAnimation(0, 360, TimeSpan.FromMilliseconds(900))
+            {
+                RepeatBehavior = RepeatBehavior.Forever
+            });
     }
 
     private void ApplyWindowChromeTheme()
@@ -571,7 +732,9 @@ public partial class SettingsWindow : Window, IHermesConfirmationHost
         {
             CompleteConfirmation(false);
             e.Handled = true;
+            return;
         }
+
     }
 
     private async void ApiKeyReveal_Click(object sender, RoutedEventArgs e)

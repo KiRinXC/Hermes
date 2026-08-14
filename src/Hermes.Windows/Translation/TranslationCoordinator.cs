@@ -63,6 +63,8 @@ public sealed class TranslationCoordinator
         remove => _overlayManager.PopupSettingsRequested -= value;
     }
 
+    public bool IsBusy => _currentRequestCts is not null || _passiveButtonCts is not null;
+
     public async Task TranslateCurrentSelectionAsync(CancellationToken cancellationToken = default)
     {
         var (selection, validation) = await _selectionOrchestrator.ReadForExplicitTriggerAsync(cancellationToken);

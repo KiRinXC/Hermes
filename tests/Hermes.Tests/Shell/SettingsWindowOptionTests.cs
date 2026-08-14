@@ -44,6 +44,7 @@ public static class SettingsWindowOptionTests
         suite.Add("settings clear history also clears diagnostics", ClearHistoryAlsoClearsDiagnostics);
         suite.Add("settings window keeps explanatory microcopy concise", WindowKeepsExplanatoryMicrocopyConcise);
         suite.Add("settings window keeps privacy options in general", WindowKeepsPrivacyOptionsInGeneral);
+        suite.Add("settings general page provides manual update controls", WindowGeneralPageProvidesManualUpdateControls);
     }
 
     private static void LabelsPreserveStorageValues()
@@ -95,6 +96,34 @@ public static class SettingsWindowOptionTests
         TestAssert.True(saveOriginalStart > generalStart && saveOriginalStart < translationStart);
         TestAssert.False(xaml.Contains("<TabItem Header=\"隐私\">", StringComparison.Ordinal));
         TestAssert.Equal(5, xaml.Split("<TabItem Header=", StringSplitOptions.None).Length - 1);
+    }
+
+    private static void WindowGeneralPageProvidesManualUpdateControls()
+    {
+        var xaml = File.ReadAllText(FindRepoFile("src/Hermes.Windows/Shell/SettingsWindow.xaml"));
+        var code = File.ReadAllText(FindRepoFile("src/Hermes.Windows/Shell/SettingsWindow.xaml.cs"));
+        var generalStart = xaml.IndexOf("<TabItem Header=\"常规\">", StringComparison.Ordinal);
+        var translationStart = xaml.IndexOf("<TabItem Header=\"翻译\">", StringComparison.Ordinal);
+        var updateStart = xaml.IndexOf("Text=\"软件更新\"", StringComparison.Ordinal);
+
+        TestAssert.True(updateStart > generalStart && updateStart < translationStart);
+        TestAssert.Contains("x:Name=\"UpdateActionButton\"", xaml);
+        TestAssert.Contains("Style=\"{StaticResource Settings.ApiTestButton}\"", xaml);
+        TestAssert.Contains("Click=\"UpdateAction_Click\"", xaml);
+        TestAssert.Contains("x:Name=\"UpdateCheckContent\"", xaml);
+        TestAssert.Contains("x:Name=\"UpdateInstallContent\"", xaml);
+        TestAssert.Contains("x:Name=\"UpdateBusyContent\"", xaml);
+        TestAssert.Contains("x:Name=\"UpdateActionSpinnerPath\"", xaml);
+        TestAssert.Contains("usePrimaryStyle ? \"Settings.SliderThumbBrush\" : \"Settings.BlueSoftBrush\"", code);
+        TestAssert.Contains("正在下载 v{state.AvailableVersion}", code);
+        TestAssert.Contains("当前已是最新版本", code);
+        TestAssert.Contains("usePrimaryStyle ? \"Settings.PrimaryButton\" : \"Settings.ApiTestButton\"", code);
+        TestAssert.Contains("UpdateAction_Click", code);
+        TestAssert.False(xaml.Contains("x:Name=\"CheckUpdateButton\"", StringComparison.Ordinal));
+        TestAssert.False(xaml.Contains("x:Name=\"InstallUpdateButton\"", StringComparison.Ordinal));
+        TestAssert.False(xaml.Contains("x:Name=\"UpdateOverlay\"", StringComparison.Ordinal));
+        TestAssert.False(code.Contains("此运行方式不支持应用内更新", StringComparison.Ordinal));
+        TestAssert.False(xaml.Contains("自动下载", StringComparison.Ordinal));
     }
 
     private static void FloatingButtonStyleOptionsIncludeHighContrastPairs()

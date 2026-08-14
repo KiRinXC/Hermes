@@ -1,7 +1,8 @@
 <UserControl x:Class="Hermes.Windows.Apps.CodexAuthSwitchSync.UI.CodexAuthSwitchSyncView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             Background="Transparent">
+             Background="Transparent"
+             PreviewKeyDown="UserControl_PreviewKeyDown">
     <UserControl.Resources>
         <Style x:Key="Codex.StatusPill" TargetType="{x:Type Border}">
             <Setter Property="Background" Value="{DynamicResource Settings.ControlBrush}"/>
@@ -25,7 +26,7 @@
     </UserControl.Resources>
 
     <Grid>
-        <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <ScrollViewer x:Name="ContentScrollViewer" VerticalScrollBarVisibility="Auto">
             <StackPanel Margin="24,14,24,14">
                 <Border x:Name="ProcessWarning"
                         Style="{DynamicResource Settings.GroupCard}"
@@ -307,36 +308,74 @@
                 <Border x:Name="OperationStatusBorder"
                         Style="{DynamicResource Settings.GroupCard}"
                         Visibility="Collapsed">
-                    <DockPanel LastChildFill="True">
-                        <ProgressBar x:Name="OperationProgress"
-                                     DockPanel.Dock="Left"
-                                     Width="72"
-                                     Height="3"
-                                     Margin="0,7,12,0"
-                                     IsIndeterminate="True"/>
-                        <TextBlock x:Name="OperationStatusText"
-                                   Style="{DynamicResource Settings.Helper}"/>
-                    </DockPanel>
+                    <TextBlock x:Name="OperationStatusText"
+                               Style="{DynamicResource Settings.Helper}"
+                               AutomationProperties.LiveSetting="Polite"/>
                 </Border>
             </StackPanel>
         </ScrollViewer>
 
-        <Border x:Name="BusyOverlay" Background="#66000000" Visibility="Collapsed">
-            <Border Width="276"
-                    Padding="18"
-                    CornerRadius="10"
+        <Border x:Name="BusyOverlay"
+                Panel.ZIndex="1000"
+                Background="Transparent"
+                Visibility="Collapsed"
+                AutomationProperties.Name="Codex 操作进度">
+            <Border x:Name="BusyCard"
+                    Width="360"
+                    Padding="22"
+                    CornerRadius="12"
                     Background="{DynamicResource Settings.ShellBrush}"
                     BorderBrush="{DynamicResource Settings.BorderBrush}"
                     BorderThickness="1"
+                    Effect="{DynamicResource Settings.ShellShadow}"
                     HorizontalAlignment="Center"
-                    VerticalAlignment="Center">
+                    VerticalAlignment="Center"
+                    RenderTransformOrigin="0.5,0.5">
+                <Border.RenderTransform>
+                    <ScaleTransform x:Name="BusyCardScaleTransform"/>
+                </Border.RenderTransform>
                 <StackPanel>
-                    <ProgressBar Height="3" IsIndeterminate="True"/>
+                    <Grid Width="52"
+                          Height="52"
+                          HorizontalAlignment="Center"
+                          AutomationProperties.Name="操作正在进行">
+                        <Border CornerRadius="26"
+                                Background="{DynamicResource Settings.ControlBrush}"
+                                BorderBrush="{DynamicResource Settings.BorderBrush}"
+                                BorderThickness="1"/>
+                        <Grid Width="30" Height="30">
+                            <Ellipse Stroke="{DynamicResource Settings.AccentBrush}"
+                                     StrokeThickness="2"
+                                     Opacity="0.16"/>
+                            <Path Data="M15,1.5 A13.5,13.5 0 1 1 4.4,23.4"
+                                  Stroke="{DynamicResource Settings.AccentBrush}"
+                                  StrokeThickness="2.2"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round"
+                                  Stretch="None">
+                                <Path.RenderTransform>
+                                    <RotateTransform x:Name="BusySpinnerRotateTransform"
+                                                     CenterX="15"
+                                                     CenterY="15"/>
+                                </Path.RenderTransform>
+                            </Path>
+                        </Grid>
+                    </Grid>
                     <TextBlock x:Name="BusyText"
-                               Margin="0,12,0,0"
+                               Margin="0,16,0,0"
                                TextAlignment="Center"
+                               TextWrapping="Wrap"
                                AutomationProperties.LiveSetting="Polite"
                                Style="{DynamicResource Settings.Label}"/>
+                    <Button x:Name="BusyCancelButton"
+                            Margin="0,18,0,0"
+                            HorizontalAlignment="Center"
+                            Style="{DynamicResource Settings.FooterButton}"
+                            Click="BusyCancel_Click"
+                            Visibility="Collapsed"
+                            AutomationProperties.Name="取消浏览器登录">
+                        <TextBlock Text="取消登录"/>
+                    </Button>
                 </StackPanel>
             </Border>
         </Border>

@@ -25,6 +25,8 @@ public sealed class CodexLocations
 
     public string BackupsDirectory => Path.Combine(AppDataDirectory, "backups");
 
+    public string BrowserLoginJournalPath => Path.Combine(AppDataDirectory, "browser-login.transaction.json");
+
     public string GetProfilePath(Domain.CodexAuthMode mode) => Path.Combine(
         ProfilesDirectory,
         mode == Domain.CodexAuthMode.ChatGpt ? "chatgpt.profile" : "api.profile");

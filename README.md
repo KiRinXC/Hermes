@@ -26,19 +26,20 @@ Hermes 是一个 Windows 全局 AI 划词翻译助手。选中英文内容后，
 - 支持浅色、深色和跟随系统主题。
 - 默认不保存翻译历史，隐私优先。
 - 设置最右侧提供“应用”中心；首个内置应用 `Codex 认证管理` 可通过官方浏览器流程初始化 ChatGPT 登录、保存 ChatGPT / API 两套完整认证档案，一键切换认证并对齐本地 Codex 会话索引。
+- 正式发行版会像微信一样在后台检查 GitHub Releases；发现新版本后只提醒，不自动下载或重启。“设置 → 常规 → 软件更新”右侧可手动检查：最新版就地显示结果，发现新版时按钮变为“更新”；点击后 Hermes 自动退出、完成更新并重新打开。
 
 ## 下载和运行
 
-正式对外发布时，请在 GitHub Releases 中下载：
+正式对外发布时，推荐在 GitHub Releases 中下载并运行：
 
 ```text
-Hermes-v0.3.0-win-x64-portable.zip
+Hermes-win-Setup.exe
 ```
 
-解压后运行：
+安装后 Hermes 会自动启动；发现后续版本时，可在“设置 → 常规”中确认下载、安装并重启。如需免安装方式，也可下载 `Hermes-win-Portable.zip`，解压后运行：
 
 ```text
-Hermes.Windows.exe
+Hermes.exe
 ```
 
 这是 `win-x64 self-contained` portable 包，目标机器不需要额外安装 .NET Runtime。
@@ -51,7 +52,7 @@ artifacts\publish\Hermes.Windows\manual-test\win-x64-self-contained\
 
 ## 快速开始
 
-1. 启动 `Hermes.Windows.exe`。
+1. 启动 Hermes。
 2. 在系统托盘中打开 Hermes 设置。
 3. 默认 Provider 为 Transmart，可直接使用；如需 OpenAI 再填写 API Key / Base URL / Model。
 4. 选中一段英文文本，按 `Ctrl+Alt+E` 翻译。
@@ -67,6 +68,8 @@ artifacts\publish\Hermes.Windows\manual-test\win-x64-self-contained\
 5. 点击目标认证方式；Hermes 会先备份，以当前 `.codex/config.toml` 为基础递归合并目标配置、整体替换 `.codex/auth.json`，同步 rollout 和权威 `state_5.sqlite`，最后读回校验。
 
 浏览器登录依赖 Codex 官方运行程序，但不要求单独安装 CLI：Hermes 会依次查找 PATH、npm 安装目录以及 VS Code / VS Code Insiders / Cursor / Windsurf 中官方 Codex 扩展自带的程序。账号密码只在 OpenAI 官方浏览器认证页中输入，Hermes 不读取登录输出，也不记录 token；为了让 CLI 与 IDE 扩展共享同一份认证，登录时会把 `cli_auth_credentials_store` 设置为 `file` 并校验 `%CODEX_HOME%\auth.json`。
+
+浏览器关闭或暂时不想继续登录时，可在 Hermes 等待层点击“取消登录”或按 `Esc`。Hermes 会终止本次 `codex login` 进程树并恢复进入登录前的 config、auth 和 ChatGPT 档案；若 Hermes 或电脑意外退出，下次启动会从加密备份继续恢复。进程警告会显示来源与 PID，例如 VS Code Codex 扩展或 Codex CLI，避免把正常 IDE 后台误认为残留登录任务。
 
 认证卡片只显示与当前状态相关的操作：当前使用 ChatGPT 且尚无档案时显示“保存当前登录”和“重新登录”；档案建立后，当前 ChatGPT 卡片只保留真正会重新认证的“重新登录”，认证档案会在之后切换离开 ChatGPT 时自动刷新；尚未建立 ChatGPT 档案且当前使用 API 时以“浏览器登录”为主操作；已有档案且当前使用 API 时显示“切换到 ChatGPT”。不可执行或可由切换流程自动完成的操作不会继续占位。
 
@@ -125,30 +128,33 @@ powershell -ExecutionPolicy Bypass -File scripts\Test-Hermes.ps1
 powershell -ExecutionPolicy Bypass -File scripts\Publish-Hermes.ps1
 ```
 
-生成 GitHub Release portable zip：
+生成包含自动更新元数据的 GitHub Release：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\Package-HermesRelease.ps1 -Version 0.3.0
+powershell -ExecutionPolicy Bypass -File scripts\Package-HermesRelease.ps1 -Version 0.4.0
 ```
 
 输出位置：
 
 ```text
-artifacts\release\v0.3.0\
+artifacts\release\v0.4.0\
 ```
 
 其中包含：
 
-- `Hermes-v0.3.0-win-x64-portable.zip`
+- `Hermes-win-Portable.zip`
+- `Hermes-win-Setup.exe`
+- `Hermes-0.4.0-full.nupkg`
+- `releases.win.json` 与 `assets.win.json`
 - `checksums.txt`
 
 ## GitHub Release 流程
 
 1. 运行测试：`scripts\Test-Hermes.ps1`
-2. 生成 zip：`scripts\Package-HermesRelease.ps1 -Version 0.3.0`
-3. 创建 tag：`v0.3.0`
-4. 在 GitHub Releases 上传 zip 和 `checksums.txt`
-5. 把 `docs/release-notes/v0.3.0.md` 的内容作为 Release Notes
+2. 生成发行资产：`scripts\Package-HermesRelease.ps1 -Version 0.4.0`
+3. 创建 tag：`v0.4.0`
+4. 在 GitHub Releases 上传该版本目录中的 portable、full nupkg、两个 JSON feed 和 `checksums.txt`；Setup 可一并上传
+5. 把 `docs/release-notes/v0.4.0.md` 的内容作为 Release Notes
 
 > 目前 Hermes 还没有代码签名证书。Windows SmartScreen 可能会提示未知发布者，这是独立 Windows 应用早期发布时常见的情况。
 

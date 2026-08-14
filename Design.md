@@ -27,7 +27,7 @@ Hermes
 ├─ Hermes.sln
 ├─ src/
 │  └─ Hermes.Windows/
-│     ├─ App.xaml / App.xaml.cs
+│     ├─ Program.cs / App.xaml / App.xaml.cs
 │     ├─ Apps/                       # 可扩展内置小应用注册表、应用中心和独立实现
 │     │  └─ CodexAuthSwitchSync/     # Codex 认证档案切换与本地会话同步
 │     ├─ Shell/
@@ -59,6 +59,7 @@ Hermes
 - 加载设置并应用主题。
 - 初始化 DPAPI 密钥存储、日志、历史、翻译服务、选区服务、悬浮层服务。
 - 创建 `AppRegistry` 并注册内置 `codex-auth-switch-sync` 应用；应用服务仍由组合根显式装配。
+- 由 `Program.cs` 在 WPF 初始化前执行 Velopack 启动钩子，但不自动套用待处理更新；组合根随后启动只负责检查与提醒的后台更新监视器。
 - 注册托盘菜单，并在启动通知显示后延迟注册全局快捷键、键盘 hook 和鼠标 hook，降低应用刚启动时 UI 线程忙碌造成的鼠标卡顿。
 - 根据暂停状态和设置控制触发器启动或停止。
 
@@ -147,7 +148,25 @@ DPAPI 加密备份当前 config + auth、rollout 首行和权威 SQLite
 读回 rollout 与 SQLite 计数；零错配才提交，否则回滚
 ```
 
-当电脑尚未建立 ChatGPT 档案时，用户也可选择“浏览器登录”：Hermes 先刷新并加密保存当前 API auth、备份活动 config/auth，然后以当前 config 为基础合并 `model_provider = "openai"` 与 `cli_auth_credentials_store = "file"`，清除不属于 ChatGPT 的旧认证路由，并暂时移除活动 auth。随后在同一 `%CODEX_HOME%` 下启动官方 `codex login`，由 Codex 打开系统浏览器完成 ChatGPT 认证。进程成功结束后，Hermes 必须确认新 `auth.json` 可识别为 ChatGPT，才加密保存 ChatGPT 档案并执行同一套 rollout/SQLite Provider 同步；登录取消、超时、认证类型错误或后续同步失败时恢复进入流程前的 config/auth。CLI 查找顺序为 PATH 中的原生可执行文件、npm 包携带的原生可执行文件、常见编辑器中的官方 Codex 扩展，最后回退到 PATH 中的 `codex.cmd`；登录进程输出不进入 Hermes 日志。
+当电脑尚未建立 ChatGPT 档案时，用户也可选择“浏览器登录”：Hermes 先刷新当前 auth，备份活动 config/auth 与原 ChatGPT Profile，写入不含凭据的事务记录，然后以当前 config 为基础合并 `model_provider = "openai"` 与 `cli_auth_credentials_store = "file"`，清除不属于 ChatGPT 的旧认证路由，并暂时移除活动 auth。随后在同一 `%CODEX_HOME%` 下异步启动官方 `codex login`，由 Codex 打开系统浏览器完成 ChatGPT 认证。登录进程加入启用 `KILL_ON_JOB_CLOSE` 的 Windows Job Object；等待层使用透明命中层拦截底层操作，不压暗页面，只以带轻阴影的主题卡片、环形状态标识和当前步骤文案表达进行中状态，不显示原生横向进度条，并始终保留“取消登录”与 Esc；Windows 关闭界面动画时环形标识保持静态。取消、关闭设置页或退出 Hermes 都会终止进程树并恢复活动文件和旧 Profile。若 Hermes 或系统异常退出，下一次启动会先回收死进程遗留锁，再按事务记录从 DPAPI 备份恢复。进程成功结束后，Hermes 必须确认新 `auth.json` 可识别为 ChatGPT，才加密保存 ChatGPT 档案并执行同一套 rollout/SQLite Provider 同步；登录超时、认证类型错误或后续同步失败同样回滚。CLI 查找顺序为 PATH 中的原生可执行文件、npm 包携带的原生可执行文件、常见编辑器中的官方 Codex 扩展，最后回退到 PATH 中的 `codex.cmd`；登录进程输出不进入 Hermes 日志。进程守卫按可执行路径区分 VS Code、VS Code Insiders、Cursor、Windsurf 扩展、CLI、App Server、Code Mode Host 与 Hermes 登录任务，并显示 PID。
+
+### 自动更新
+
+```text
+Velopack 启动钩子识别安装上下文，但不自动应用待处理更新
+  ↓
+Hermes 启动 8 秒后从 GitHub Releases 检查 stable win feed
+  ↓
+发现新版本后更新“设置 → 常规”状态并显示托盘提醒
+  ↓
+用户点击常规页“检查更新”按钮，就地显示检查结果
+  ↓
+发现新版时按钮变为唯一主操作“更新”；点击后先保存当前设置，再下载并校验 full/delta 包
+  ↓
+Hermes 自动退出，应用新版本并自动重新打开
+```
+
+正式发行版启动后自动检查，之后每六小时检查一次；后台流程只改变可见状态并最多对同一版本提醒一次，绝不自行下载、安装或重启。常规页的软件更新卡右侧使用与“测试连接”一致的次级按钮：默认“检查更新”，检查中禁用并显示环形状态，最新版在左侧显示“当前已是最新版本”，失败时按钮变为“重新检查”。发现版本后，左侧显示目标版本，右侧同一位置切换为唯一蓝色主按钮“更新”；点击该按钮即为最终确认，不再打开弹窗或第二层确认。随后先走统一设置保存流程，保存失败则终止更新；下载期间按钮显示百分比，不使用横向进度条，并尊重 Windows 减少动画设置。下载完成后 Velopack 退出 Hermes、应用更新并自动启动新版本。Debug 和普通 `dotnet publish` 的 manual-test 文件夹不属于 Velopack 安装上下文，界面只显示当前版本，不暴露安装实现限制。更新源固定为公开仓库 `KiRinXC/Hermes` 的稳定 GitHub Releases。
 
 ChatGPT 与 API 档案都以 DPAPI 保存各自的 `config.toml` 模板和完整 `auth.json`。API 配置采用完整档案编辑：用户直接粘贴或修改中转站提供的两份文件内容，Hermes 要求 `config.toml` 根配置显式包含 `model_provider`，除此之外不改写模型、推理等级、地址、Provider 定义或其他字段；`auth.json` 接受任意非空 API 凭据对象，但拒绝 ChatGPT token 档案。切换时遵循 Codex 配置层的递归合并语义：当前用户配置作为基础，目标模板中的同路径标量/数组整体替换、表递归合并、新键加入，目标没有的 MCP、插件、项目、Feature 和其他配置继续保留。`model_provider` 始终以目标模板为准；目标未声明的旧认证路由项（例如 `forced_login_method`、`openai_base_url`）会清除，防止跨登录方式串用。当前档案只刷新 auth，不再把合并后的完整 config 反存成 Profile，避免旧 MCP/插件快照在下一轮切换时回灌。再次编辑时回填档案 config，并将 DPAPI 档案中的 auth 仅在本次编辑会话内解密回显；编辑框禁用撤销历史，并在统一保存、返回应用列表或关闭设置窗口时清空。配置编辑通过 `ISettingsSaveParticipant` 接入设置窗口右下角统一保存：若当前为 API，保存前要求 Codex 客户端退出，然后先备份活动 config/auth 和旧 API Profile，以活动 config 为基础合并新模板、整体更新 auth、对齐会话 Provider，任一步失败都恢复活动文件和旧 Profile；若当前不是 API，则只更新加密档案，留待下次切换。Provider 标识在 rollout、状态统计和 SQLite 同步中始终按大小写严格匹配；SQLite 查询显式使用 `BINARY`，不依赖数据库列的默认排序规则。同步不复制或上传完整会话内容，而是修正同一 `%CODEX_HOME%` 中的本地 Provider 元数据。权威状态库只从配置的 `sqlite_home/state_5.sqlite`、`sqlite/state_5.sqlite`、根目录 `state_5.sqlite` 中择优选择，明确不修改 `codex-dev.db` 一类辅助目录。状态页在同一次 rollout 首行扫描中按常规会话、内部子代理与已归档三类展示会话构成；无法解析的活动记录计入本地总数但不额外显示加法说明，不读取会话正文。
 
@@ -167,7 +186,7 @@ ChatGPT 与 API 档案都以 DPAPI 保存各自的 `config.toml` 模板和完整
 
 `Apps/AppRegistry` 是 Hermes 内置小应用的注册入口，`Apps/AppsCenterView` 在设置页中提供列表与详情两级导航。每个应用实现 `IHermesApp`，拥有稳定 ID、矢量图标、名称、说明和可复用视图；应用自己的文件、服务和 UI 放在 `Apps/<AppName>/` 内，避免未来多个工具继续堆进 Shell。
 
-`Apps/CodexAuthSwitchSync` 是首个内置应用，ID 固定为 `codex-auth-switch-sync`。它负责：识别 ChatGPT/API auth；通过官方 `codex login` 启动系统浏览器初始化或刷新 ChatGPT 认证；以当前 Windows 用户 DPAPI 加密两套配置模板与完整凭据；导入并校验任意中转站提供的 API config/auth；按 Codex 的递归配置层语义合并目标模板并保留当前共享配置；切换、浏览器登录以及活动 API 配置应用前拦截仍运行的 Codex 客户端；以原子文件写和 SQLite 事务同步本地会话；失败时恢复 config、auth、Profile、rollout 首行和数据库；解释 rollout 总数与用户可见历史数之间的常规会话、内部子代理、已归档构成。认证卡片的操作区按活动认证和档案存在状态动态裁剪，每张卡最多展示两个有效动作，隐藏“切换到当前认证”等无效入口，并动态指定唯一主操作，避免窄卡片自动换行。切换、登录和同步统一通过 `IHermesConfirmationHost` 使用设置窗口内确认层，不创建系统 MessageBox。备份仅保留最近五次。
+`Apps/CodexAuthSwitchSync` 是首个内置应用，ID 固定为 `codex-auth-switch-sync`。它负责：识别 ChatGPT/API auth；通过官方 `codex login` 启动系统浏览器初始化或刷新 ChatGPT 认证；以当前 Windows 用户 DPAPI 加密两套配置模板与完整凭据；导入并校验任意中转站提供的 API config/auth；按 Codex 的递归配置层语义合并目标模板并保留当前共享配置；切换、浏览器登录以及活动 API 配置应用前拦截仍运行的 Codex 客户端；以原子文件写和 SQLite 事务同步本地会话；失败时恢复 config、auth、Profile、rollout 首行和数据库；解释 rollout 总数与用户可见历史数之间的常规会话、内部子代理、已归档构成。浏览器登录额外由可取消异步任务、Windows Job Object 和持久事务记录托管，保证用户取消、应用退出与异常中断都能清理进程并恢复。认证卡片的操作区按活动认证和档案存在状态动态裁剪，每张卡最多展示两个有效动作，隐藏“切换到当前认证”等无效入口，并动态指定唯一主操作，避免窄卡片自动换行。切换、登录和同步统一通过 `IHermesConfirmationHost` 使用设置窗口内确认层，不创建系统 MessageBox。备份仅保留最近五次。
 
 ### Tray
 
@@ -228,7 +247,7 @@ ChatGPT 与 API 档案都以 DPAPI 保存各自的 `config.toml` 模板和完整
 
 ### Infrastructure
 
-基础设施模块包括日志、路径、Win32 方法、应用身份、单实例守卫和日志脱敏。用户数据目录统一为 `%LOCALAPPDATA%\Hermes\`，并保留从旧目录迁移数据的兼容逻辑。内置应用的数据使用 `%LOCALAPPDATA%\Hermes\apps\<app-id>\` 子目录隔离。
+基础设施模块包括日志、路径、Win32 方法、应用身份、单实例守卫、日志脱敏和 `AutomaticUpdateService`。用户数据目录统一为 `%LOCALAPPDATA%\Hermes\`，并保留从旧目录迁移数据的兼容逻辑。内置应用的数据使用 `%LOCALAPPDATA%\Hermes\apps\<app-id>\` 子目录隔离。自动更新服务维护检查中、最新、发现版本、下载中、待重启、不受支持和失败等状态；组合根只定时检查与提醒，设置窗口订阅状态，并只在用户点击软件更新卡右侧的“更新”后调用下载、应用和重启。
 
 ### UI/Themes
 
@@ -236,7 +255,7 @@ ChatGPT 与 API 档案都以 DPAPI 保存各自的 `config.toml` 模板和完整
 
 ### Tests
 
-`tests/Hermes.Tests` 是轻量控制台测试套件，覆盖设置、脱敏、选区校验、选择候选、UI Automation 预读失败/超时手势兜底、受控剪贴板新鲜度与目标窗口约束、被动路径敏感控件检查时间盒、快捷键解析、鼠标 Ctrl/Alt 起手物理键与 hook 双重门控、启动触发器延迟注册、启动通知点击设置、设置窗口选项文案和值映射、设置/弹窗边缘缩放与尺寸持久化约束、外观页悬浮按钮五点尺寸选择器对齐与主题预览、外观页浮窗字号五点选择器、设置/弹窗滚动条主题样式、通知点击后的设置窗抬前逻辑、历史/诊断清理、OpenAI 与 Transmart 响应解析、加载态通道显示、悬浮按钮清晰度和去重约束、翻译卡片拖拽/外部点击关闭入口、多卡片事件隔离约束、弹窗 Markdown 渲染回归、UI 字重约束，以及 Apps 注册表、Codex TOML/auth 识别、配置递归合并、浏览器登录配置与 CLI 定位、认证路由清理、rollout + 权威 SQLite 同步和应用界面隐私标签等逻辑。WPF 可视交互和真实浏览器 OAuth 仍需要真实应用试用补充验证。
+`tests/Hermes.Tests` 是轻量控制台测试套件，覆盖设置、脱敏、选区校验、选择候选、UI Automation 预读失败/超时手势兜底、受控剪贴板新鲜度与目标窗口约束、被动路径敏感控件检查时间盒、快捷键解析、鼠标 Ctrl/Alt 起手物理键与 hook 双重门控、启动触发器延迟注册、启动通知点击设置、设置窗口选项文案和值映射、设置/弹窗边缘缩放与尺寸持久化约束、外观页悬浮按钮五点尺寸选择器对齐与主题预览、外观页浮窗字号五点选择器、设置/弹窗滚动条主题样式、通知点击后的设置窗抬前逻辑、历史/诊断清理、OpenAI 与 Transmart 响应解析、加载态通道显示、悬浮按钮清晰度和去重约束、翻译卡片拖拽/外部点击关闭入口、多卡片事件隔离约束、弹窗 Markdown 渲染回归、UI 字重约束，以及 Apps 注册表、Codex TOML/auth 识别、配置递归合并、浏览器登录配置与 CLI 定位、登录取消/Job Object/事务恢复入口、进程来源分类、认证路由清理、rollout + 权威 SQLite 同步、Velopack 启动顺序与发行 feed 等逻辑。WPF 可视交互、真实浏览器 OAuth、强制终止恢复和跨版本自动更新仍需要真实发行包试用补充验证。
 
 ## 打包策略
 
@@ -273,17 +292,21 @@ artifacts\publish\Hermes.Windows\manual-test\win-x64-self-contained\
 powershell -ExecutionPolicy Bypass -File scripts\Publish-Hermes.ps1
 ```
 
-对外 GitHub Release 采用 zip 包分发，脚本会先生成固定 self-contained portable 目录，再压缩为版本化 zip 并生成 SHA256 校验文件：
+对外 GitHub Release 从 v0.4.0 起采用 Velopack 1.2.0 生成 portable、可选 Setup、full/delta nupkg 与 win feed。仓库通过 `.config\dotnet-tools.json` 固定 `vpk` 版本；脚本仍先覆盖固定 self-contained manual-test 目录，再把 Velopack 资产写入持久 feed 目录以便后续生成 delta，并复制当前版本资产与 SHA256 清单：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\Package-HermesRelease.ps1 -Version 0.3.0
+powershell -ExecutionPolicy Bypass -File scripts\Package-HermesRelease.ps1 -Version 0.4.0
 ```
 
 输出目录：
 
 ```text
-artifacts\release\v0.3.0\
-├─ Hermes-v0.3.0-win-x64-portable.zip
+artifacts\release\v0.4.0\
+├─ Hermes-win-Portable.zip
+├─ Hermes-win-Setup.exe
+├─ Hermes-0.4.0-full.nupkg
+├─ releases.win.json
+├─ assets.win.json
 └─ checksums.txt
 ```
 
@@ -313,7 +336,7 @@ artifacts\publish\Hermes.Windows\manual-test\win-x64-local-runtime\
 - 不要求测试机器额外安装 .NET Desktop Runtime。
 - 比单文件包更容易检查依赖和日志问题。
 - 便于直接替换整个目录进行日常试用。
-- 后续正式发布前仍可追加单文件包、MSIX 或安装器。
+- manual-test 文件夹继续便于直接检查；GitHub 正式发行由 Velopack portable/Setup 承担安装与更新。
 
 `artifacts/` 是本地构建产物目录，不进入 Git。
 
@@ -339,6 +362,7 @@ Hermes 的用户数据保存在：
 - `history.json`：翻译历史，默认不保存。
 - `apps\codex-auth-switch-sync\profiles\*.profile`：当前 Windows 用户 DPAPI 加密的 Codex 完整认证档案。
 - `apps\codex-auth-switch-sync\backups\`：切换/同步前的加密恢复材料，最多保留五份。
+- `apps\codex-auth-switch-sync\browser-login.transaction.json`：仅在浏览器登录事务进行中存在的不含凭据恢复指针，成功、取消或恢复后删除。
 
 设计原则：
 
@@ -356,7 +380,7 @@ Hermes 的用户数据保存在：
 - 当前没有完整历史列表 UI，仅保留高级页清空历史动作。
 - 设置窗口的 Mica 背景依赖 Windows 11 DWM 能力；在不支持的系统或透明窗口组合受限时会退回内置深色背景。
 - 真实多显示器、高 DPI、不同应用兼容性需要持续人工试用。
-- 当前打包是 portable 测试包，不是正式安装器。
+- manual-test 自包含目录不受自动更新管理；只有从 Velopack portable 或 Setup 启动的正式发行版能够完成应用内下载、替换与自动重启。
 - Codex 会话同步只改变本机 rollout 与 `state_5.sqlite` 中的 Provider 元数据，不等于 ChatGPT 网页云同步；跨认证会话中的加密内容可能仍无法继续。
 - 为避免 Codex 同时写入造成竞争，浏览器登录、切换与同步要求先退出 Codex 桌面端、CLI、ChatGPT 和 IDE Codex 扩展。
 - ChatGPT 浏览器登录依赖本机可用的 Codex CLI 或官方 Codex 编辑器扩展；OAuth 页面和服务端可用性无法由离线自动测试覆盖。
@@ -365,6 +389,11 @@ Hermes 的用户数据保存在：
 
 | 日期 | 变更 | 影响范围 |
 | --- | --- | --- |
+| 2026-08-14 | 将软件更新交互收敛为卡片右侧单按钮：按钮沿用“测试连接”样式执行检查，最新版与错误在卡片内就地反馈；发现新版后同一按钮切换为蓝色“更新”，点击即开始保存、下载、退出安装与自动重启，并移除更新弹窗。 | Release / Shell / UI / Accessibility / Tests / 文档维护 |
+| 2026-08-14 | 将常规页“软件更新”改为可点击入口：打开不压暗背景的 Hermes 主题弹窗后检查并展示版本，“安装”作为唯一最终确认；下载完成后由 Velopack 自动退出、安装并重新打开 Hermes，同时移除界面中的运行方式限制文案。 | Release / Infrastructure / Shell / UI / Accessibility / Tests / 文档维护 |
+| 2026-08-14 | 优化 Codex 认证切换、档案保存和浏览器登录等待态：移除默认 WPF 横向进度条和整页黑色遮罩，改用透明命中层、带轻阴影的主题卡片、环形状态标识、当前步骤文案及 180ms 进入动效；尊重 Windows 界面动画开关，并继续保留浏览器登录的按钮/Esc 取消入口。 | Apps / Shell / UI / Accessibility / Tests / 文档维护 |
+| 2026-08-14 | 将软件更新调整为微信式“自动检查、手动确认”：后台只更新状态和托盘提醒，不下载、不自动重启；常规页新增紧凑更新卡片，用户确认后先保存设置，再下载、安装和重启；待处理更新也不在启动时静默套用。 | Release / Infrastructure / Shell / UI / Accessibility / Tests / 文档维护 |
+| 2026-08-14 | 准备 v0.4.0：接入 Velopack GitHub Releases 更新能力；ChatGPT 浏览器登录改为可取消异步任务，以 Windows Job Object 清理进程树，并以持久事务记录恢复取消、失败或崩溃前的 config/auth/Profile；Codex 进程提示新增 IDE/CLI/Hermes 来源和 PID，等待层沿用 Hermes 遮罩与按钮体系。 | Release / Infrastructure / Apps / Process / Recovery / UI / Tests / 文档维护 |
 | 2026-08-14 | 准备并发布 v0.3.0：补充程序集版本和 Release Notes，将打包脚本、README 与发布示例统一到 0.3.0；发布前删除已废弃的固定 API 配置生成路径及其私网开发地址，并将 `Microsoft.Data.Sqlite` 升级到 10.0.11 以消除 SQLite 原生依赖的高危公告。 | Release / Security / Dependencies / Apps / Tests / 文档维护 |
 | 2026-08-14 | 将隐私设置并入常规页，移除独立“隐私”页签，在保留历史记录开关与隐私边界提示的同时把设置一级导航由六项缩减为五项。 | Shell / UI / Privacy / Tests / 文档维护 |
 | 2026-08-14 | 全面精简设置、应用中心与 Codex 页面微文案：删除复述控件含义的 6 处说明，缩短隐私、诊断与同步边界提示，将 OpenAI 翻译开关改为可见标签，合并“全部 Rollout”指标，并移除常规、外观、隐私及应用中心与页签重复的标题；动态状态、错误、认证档案和会话分类解释继续保留。 | Shell / Apps / UI / Accessibility / Tests / 文档维护 |
