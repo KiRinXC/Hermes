@@ -18,13 +18,8 @@ public static class SelectionCandidateServiceTests
         suite.Add("rejects excluded app selection candidate", RejectsExcludedAppSelectionCandidate);
         suite.Add("rejects disabled automatic selection", RejectsDisabledAutomaticSelection);
         suite.Add("rejects expired selection candidate", RejectsExpiredCandidate);
-        suite.Add("uses candidate pre-read text", UsesCandidatePreReadText);
-        suite.Add("rejects stale candidate pre-read text", RejectsStaleCandidatePreReadText);
-        suite.Add("rejects empty candidate pre-read text", RejectsEmptyCandidatePreReadText);
-        suite.Add("passive candidate requires pre-read validation", PassiveCandidateRequiresPreReadValidation);
-        suite.Add("passive candidate falls back when pre-read is unavailable", PassiveCandidateFallsBackWhenPreReadUnavailable);
-        suite.Add("passive candidate pre-read is time boxed", PassiveCandidatePreReadIsTimeBoxed);
-        suite.Add("passive candidate sensitive check is time boxed", PassiveCandidateSensitiveCheckIsTimeBoxed);
+        suite.Add("passive candidate does not read selection content", PassiveCandidateDoesNotReadSelectionContent);
+        suite.Add("candidate stores no pre-read selection content", CandidateStoresNoPreReadSelectionContent);
     }
 
     private static void AcceptsHighConfidenceCandidate()
@@ -33,8 +28,7 @@ public static class SelectionCandidateServiceTests
         var decision = SelectionCandidateService.EvaluateGesture(
             new SelectionCandidateInput(10, 10, 180, 18, now, now.AddMilliseconds(320), null, TranslationMode.Translate, true, true, true),
             new AppSettings(),
-            isExcluded: false,
-            isSensitive: false);
+            isExcluded: false);
         TestAssert.True(decision.ShouldShow);
     }
 
@@ -44,8 +38,7 @@ public static class SelectionCandidateServiceTests
         var decision = SelectionCandidateService.EvaluateGesture(
             new SelectionCandidateInput(10, 10, 14, 12, now, now.AddMilliseconds(320), null, TranslationMode.Translate, true, true, true),
             new AppSettings(),
-            isExcluded: false,
-            isSensitive: false);
+            isExcluded: false);
         TestAssert.False(decision.ShouldShow);
     }
 
@@ -55,8 +48,7 @@ public static class SelectionCandidateServiceTests
         var decision = SelectionCandidateService.EvaluateGesture(
             new SelectionCandidateInput(10, 10, 180, 18, now, now.AddMilliseconds(320), null, TranslationMode.Translate, true, false, false),
             new AppSettings(),
-            isExcluded: false,
-            isSensitive: false);
+            isExcluded: false);
         TestAssert.True(decision.ShouldShow);
     }
 
@@ -66,8 +58,7 @@ public static class SelectionCandidateServiceTests
         var decision = SelectionCandidateService.EvaluateGesture(
             new SelectionCandidateInput(10, 10, 180, 18, now, now.AddMilliseconds(320), null, TranslationMode.Translate, false, false, false),
             new AppSettings(),
-            isExcluded: false,
-            isSensitive: false);
+            isExcluded: false);
         TestAssert.False(decision.ShouldShow);
         TestAssert.Equal("modifier-not-held", decision.Reason);
     }
@@ -78,8 +69,7 @@ public static class SelectionCandidateServiceTests
         var decision = SelectionCandidateService.EvaluateGesture(
             new SelectionCandidateInput(10, 10, 180, 18, now, now.AddMilliseconds(320), null, TranslationMode.Translate, false, true, true),
             new AppSettings(),
-            isExcluded: false,
-            isSensitive: false);
+            isExcluded: false);
         TestAssert.False(decision.ShouldShow);
         TestAssert.Equal("modifier-not-held", decision.Reason);
     }
@@ -107,8 +97,7 @@ public static class SelectionCandidateServiceTests
         var decision = SelectionCandidateService.EvaluateGesture(
             new SelectionCandidateInput(10, 10, 180, 18, now, now.AddMilliseconds(320), foreground, TranslationMode.Translate, true, true, true),
             new AppSettings(),
-            isExcluded: true,
-            isSensitive: false);
+            isExcluded: true);
         TestAssert.False(decision.ShouldShow);
         TestAssert.Equal("foreground-app-excluded", decision.Reason);
     }
@@ -121,8 +110,7 @@ public static class SelectionCandidateServiceTests
         var decision = SelectionCandidateService.EvaluateGesture(
             new SelectionCandidateInput(10, 10, 180, 18, now, now.AddMilliseconds(320), null, TranslationMode.Translate, true, true, true),
             settings,
-            isExcluded: false,
-            isSensitive: false);
+            isExcluded: false);
         TestAssert.False(decision.ShouldShow);
     }
 
@@ -137,97 +125,24 @@ public static class SelectionCandidateServiceTests
             TimeSpan.FromMilliseconds(250),
             null,
             TranslationMode.Translate,
-            null,
-            null,
             0.8);
         TestAssert.True(SelectionCandidateService.IsExpired(candidate));
     }
 
-    private static void UsesCandidatePreReadText()
-    {
-        var candidate = CreateCandidate("Hello world");
-        var created = SelectionCandidateService.TryCreatePreReadSelection(
-            candidate,
-            new AppSettings(),
-            out var selection,
-            out var validation);
-        TestAssert.True(created);
-        TestAssert.True(validation.IsValid);
-        TestAssert.Equal("Hello world", selection.Text);
-        TestAssert.Equal(SelectionProviderKind.UiAutomation, selection.Provider);
-    }
-
-    private static void RejectsStaleCandidatePreReadText()
-    {
-        var candidate = CreateCandidate("Hello world") with
-        {
-            CreatedAt = DateTimeOffset.Now.Subtract(TimeSpan.FromSeconds(10))
-        };
-        var created = SelectionCandidateService.TryCreatePreReadSelection(
-            candidate,
-            new AppSettings(),
-            out _,
-            out _);
-        TestAssert.False(created);
-    }
-
-    private static void RejectsEmptyCandidatePreReadText()
-    {
-        var candidate = CreateCandidate(null);
-        var created = SelectionCandidateService.TryCreatePreReadSelection(
-            candidate,
-            new AppSettings(),
-            out _,
-            out _);
-        TestAssert.False(created);
-    }
-
-    private static SelectionCandidate CreateCandidate(string? preReadText)
-    {
-        return new SelectionCandidate(
-            Guid.NewGuid(),
-            DateTimeOffset.Now,
-            20,
-            20,
-            120,
-            TimeSpan.FromMilliseconds(250),
-            null,
-            TranslationMode.Translate,
-            preReadText,
-            null,
-            0.8);
-    }
-
-    private static void PassiveCandidateRequiresPreReadValidation()
+    private static void PassiveCandidateDoesNotReadSelectionContent()
     {
         var code = File.ReadAllText(FindRepoFile("src/Hermes.Windows/Selection/SelectionCandidateService.cs"));
-        TestAssert.Contains("_uiAutomationProvider.TryGetSelectionAsync", code);
-        TestAssert.Contains("SelectionTextValidator.Validate(preRead.Text", code);
-        TestAssert.Contains("pre-read-selection-invalid", code);
+        TestAssert.False(code.Contains("UiAutomationSelectionProvider", StringComparison.Ordinal));
+        TestAssert.False(code.Contains("TryGetSelectionAsync", StringComparison.Ordinal));
+        TestAssert.False(code.Contains("ClipboardSelectionProvider", StringComparison.Ordinal));
+        TestAssert.False(code.Contains("IsFocusedElementSensitive", StringComparison.Ordinal));
     }
 
-    private static void PassiveCandidateFallsBackWhenPreReadUnavailable()
+    private static void CandidateStoresNoPreReadSelectionContent()
     {
-        var code = File.ReadAllText(FindRepoFile("src/Hermes.Windows/Selection/SelectionCandidateService.cs"));
-        TestAssert.Contains("gesture-fallback-pending", code);
-    }
-
-    private static void PassiveCandidatePreReadIsTimeBoxed()
-    {
-        var code = File.ReadAllText(FindRepoFile("src/Hermes.Windows/Selection/SelectionCandidateService.cs"));
-        TestAssert.Contains("PassivePreReadTimeout = TimeSpan.FromMilliseconds(35)", code);
-        TestAssert.Contains("Task.WhenAny", code);
-    }
-
-    private static void PassiveCandidateSensitiveCheckIsTimeBoxed()
-    {
-        var candidateCode = File.ReadAllText(FindRepoFile("src/Hermes.Windows/Selection/SelectionCandidateService.cs"));
-        var foregroundCode = File.ReadAllText(FindRepoFile("src/Hermes.Windows/Selection/ForegroundWindowService.cs"));
-
-        TestAssert.Contains("PassiveSensitiveCheckTimeout", candidateCode);
-        TestAssert.Contains("IsFocusedElementSensitiveWithinAsync", candidateCode);
-        TestAssert.False(candidateCode.Contains("IsFocusedElementSensitive())", StringComparison.Ordinal));
-        TestAssert.Contains("Task.WhenAny(sensitiveTask", foregroundCode);
+        var code = File.ReadAllText(FindRepoFile("src/Hermes.Windows/Selection/SelectionCandidate.cs"));
+        TestAssert.False(code.Contains("PreReadText", StringComparison.Ordinal));
+        TestAssert.False(code.Contains("ScreenBounds", StringComparison.Ordinal));
     }
 
     private static string FindRepoFile(string relativePath)

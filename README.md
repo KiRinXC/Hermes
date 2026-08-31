@@ -91,9 +91,9 @@ normal
 
 Windows 上不同应用暴露选区的方式并不一致，所以 Hermes 采用多层策略：
 
-1. 优先通过 Windows UI Automation 读取当前选区。
-2. 支持用快捷键稳定触发翻译。
-3. 在显式触发时，必要情况下使用受控剪贴板兜底。
+1. 划词阶段只识别手势、前台窗口和鼠标位置，不读取选区正文，也不访问剪贴板。
+2. 用户按快捷键或点击悬浮按钮后，才优先通过 Windows UI Automation 读取当前选区。
+3. UI Automation 失败时，才在本次显式操作中使用受控剪贴板兜底。
 
 受控剪贴板兜底只接受本次 `Ctrl+C` 产生的新内容：Hermes 会验证剪贴板确实发生更新，并在完成后恢复原剪贴板；如果没有读到新文本，不会拿之前复制过的残留内容去翻译。
 
@@ -101,7 +101,7 @@ Windows 上不同应用暴露选区的方式并不一致，所以 Hermes 采用�
 
 ## 隐私说明
 
-- 只有用户主动按快捷键、点击悬浮按钮或选择翻译剪贴板时，Hermes 才会发送文本。
+- 只有用户主动按快捷键、点击悬浮按钮或选择翻译剪贴板时，Hermes 才会读取选区/剪贴板正文并发送文本；后台划词检测只记录手势和位置。
 - API Key 不写入 `settings.json`，而是使用 Windows DPAPI 加密保存。
 - Codex 的完整 config + auth 档案同样使用当前 Windows 用户的 DPAPI 加密，保存在 `%LOCALAPPDATA%\KiRinXC\Hermes\apps\codex-auth-switch-sync\`；不会随电脑同步，每台电脑需分别初始化。
 - 用户数据与程序安装目录彼此独立；正常卸载默认保留用户数据，常规页可查看两个实际路径或删除全部用户数据。
@@ -130,19 +130,19 @@ powershell -ExecutionPolicy Bypass -File scripts\Publish-Hermes.ps1
 生成包含自动更新元数据的 GitHub Release：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\Package-HermesRelease.ps1 -Version 0.4.0
+powershell -ExecutionPolicy Bypass -File scripts\Package-HermesRelease.ps1 -Version 0.4.1
 ```
 
 输出位置：
 
 ```text
-artifacts\release\v0.4.0\
+artifacts\release\v0.4.1\
 ```
 
 其中包含：
 
 - `Hermes-win-Setup.exe`
-- `Hermes-0.4.0-full.nupkg`
+- `Hermes-0.4.1-full.nupkg`
 - `releases.win.json`
 - `checksums.txt`
 
@@ -151,10 +151,10 @@ artifacts\release\v0.4.0\
 ## GitHub Release 流程
 
 1. 运行测试：`scripts\Test-Hermes.ps1`
-2. 生成发行资产：`scripts\Package-HermesRelease.ps1 -Version 0.4.0`
-3. 创建 tag：`v0.4.0`
+2. 生成发行资产：`scripts\Package-HermesRelease.ps1 -Version 0.4.1`
+3. 创建 tag：`v0.4.1`
 4. 在 GitHub Releases 上传该版本目录中的 Setup、full/delta nupkg、`releases.win.json` 和 `checksums.txt`
-5. 把 `docs/release-notes/v0.4.0.md` 的内容作为 Release Notes
+5. 把 `docs/release-notes/v0.4.1.md` 的内容作为 Release Notes
 
 > 目前 Hermes 还没有代码签名证书。Windows SmartScreen 可能会提示未知发布者，这是独立 Windows 应用早期发布时常见的情况。
 

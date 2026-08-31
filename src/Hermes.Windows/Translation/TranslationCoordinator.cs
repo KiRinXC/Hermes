@@ -114,7 +114,7 @@ public sealed class TranslationCoordinator
         try
         {
             await Task.Delay(PassiveSelectionSettleDelay, passiveButtonToken);
-            var decision = await _selectionCandidateService.CreateFromMouseGestureAsync(
+            var decision = _selectionCandidateService.CreateFromMouseGesture(
                 startX,
                 startY,
                 releaseX,
@@ -124,8 +124,7 @@ public sealed class TranslationCoordinator
                 mode,
                 ctrlDownAtStart,
                 ctrlHeldDuringDrag,
-                ctrlDownAtRelease,
-                passiveButtonToken);
+                ctrlDownAtRelease);
 
             if (!ReferenceEquals(_passiveButtonCts, passiveButtonCts) || passiveButtonToken.IsCancellationRequested)
             {
@@ -200,16 +199,6 @@ public sealed class TranslationCoordinator
         var loadingBodyText = candidate.Mode == TranslationMode.Explain ? "\u6B63\u5728\u89E3\u91CA" : "\u6B63\u5728\u7FFB\u8BD1";
         var popup = _overlayManager.ShowCandidateLoadingPopup(candidate, loadingStateText, loadingBodyText);
         await popup.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Render, cancellationToken);
-
-        if (SelectionCandidateService.TryCreatePreReadSelection(
-            candidate,
-            _settingsService.Current,
-            out var preReadSelection,
-            out var preReadValidation))
-        {
-            await TranslateSelectionAsync(preReadSelection, preReadValidation, candidate.Mode, cancellationToken, popup);
-            return;
-        }
 
         var (selection, validation) = await _selectionOrchestrator.ReadForCandidateTriggerAsync(
             candidate.ForegroundWindow,

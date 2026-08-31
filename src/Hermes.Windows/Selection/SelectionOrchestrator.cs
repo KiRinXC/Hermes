@@ -63,21 +63,6 @@ public sealed class SelectionOrchestrator
         return (result, validation);
     }
 
-    public async Task<(SelectionResult Result, SelectionValidationResult Validation)> ReadForPassiveMouseAsync(CancellationToken cancellationToken = default)
-    {
-        var foreground = _foregroundWindowService.GetForegroundWindowInfo();
-        if (_foregroundWindowService.IsExcluded(foreground)
-            || await _foregroundWindowService.IsFocusedElementSensitiveAsync(cancellationToken))
-        {
-            var excludedResult = SelectionResult.Empty("当前应用或控件已被排除。", foreground);
-            return (excludedResult, SelectionValidationResult.Invalid(excludedResult.Message!));
-        }
-
-        var result = await _uiAutomationProvider.TryGetSelectionAsync(cancellationToken);
-        var validation = SelectionTextValidator.Validate(result.Text, _settingsService.Current);
-        return (result, validation);
-    }
-
     public async Task<(SelectionResult Result, SelectionValidationResult Validation)> ReadClipboardAsync(CancellationToken cancellationToken = default)
     {
         var result = await _clipboardProvider.ReadClipboardTextAsync(cancellationToken);

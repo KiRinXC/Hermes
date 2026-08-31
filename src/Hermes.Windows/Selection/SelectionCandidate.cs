@@ -11,23 +11,7 @@ public sealed record SelectionCandidate(
     TimeSpan DragDuration,
     ForegroundWindowInfo? ForegroundWindow,
     TranslationMode Mode,
-    string? PreReadText,
-    ScreenBounds? Bounds,
-    double Confidence)
-{
-    public bool HasPreReadText => !string.IsNullOrWhiteSpace(PreReadText);
-
-    public SelectionCandidate WithPreRead(SelectionResult selection, double confidence)
-    {
-        return this with
-        {
-            PreReadText = selection.Text,
-            Bounds = selection.Bounds,
-            ForegroundWindow = selection.ForegroundWindow ?? ForegroundWindow,
-            Confidence = Math.Max(Confidence, confidence)
-        };
-    }
-}
+    double Confidence);
 
 public sealed record SelectionCandidateInput(
     int StartX,

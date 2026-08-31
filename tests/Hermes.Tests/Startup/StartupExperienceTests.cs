@@ -9,6 +9,7 @@ public static class StartupExperienceTests
         suite.Add("startup defers trigger hooks until after notification", DefersTriggerHooksUntilAfterNotification);
         suite.Add("startup migrates user data only in the primary instance", MigratesUserDataOnlyInPrimaryInstance);
         suite.Add("settings window is raised to foreground when opened from notification flows", SettingsWindowIsRaisedToForegroundWhenOpenedFromNotificationFlows);
+        suite.Add("global hook callbacks defer ui work", GlobalHookCallbacksDeferUiWork);
     }
 
     private static void DefersTriggerHooksUntilAfterNotification()
@@ -45,6 +46,17 @@ public static class StartupExperienceTests
         TestAssert.True(guardIndex >= 0);
         TestAssert.True(firstInstanceIndex > guardIndex);
         TestAssert.True(migrationIndex > firstInstanceIndex);
+    }
+
+    private static void GlobalHookCallbacksDeferUiWork()
+    {
+        var code = File.ReadAllText(FindRepoFile("src/Hermes.Windows/App.xaml.cs"));
+
+        TestAssert.Contains("_keyboardHookService.UserActivity += (_, _) => QueuePassiveUiClose();", code);
+        TestAssert.Contains("_keyboardHookService.EscapePressed += (_, _) => QueuePassiveUiClose();", code);
+        TestAssert.Contains("private void QueuePassiveUiClose()", code);
+        TestAssert.Contains("Dispatcher.BeginInvoke", code);
+        TestAssert.Contains("_passiveUiCloseQueued", code);
     }
 
     private static string FindRepoFile(string relativePath)

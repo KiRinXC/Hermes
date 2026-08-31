@@ -35,7 +35,7 @@ public sealed class OverlayManager
         CloseFloatingButton();
         var dimensions = FloatingButtonWindow.ResolveDimensions(_settingsService.Current.Ui.FloatingButtonSize);
         var buttonSize = dimensions.HitSize;
-        var position = _positionService.PositionNearSelection(candidate.Bounds, buttonSize, buttonSize, candidate.ReleaseX, candidate.ReleaseY);
+        var position = _positionService.PositionNearSelection(null, buttonSize, buttonSize, candidate.ReleaseX, candidate.ReleaseY);
         var physicalButtonSize = DpiAwareScreen.ToPhysicalSize(buttonSize, buttonSize, new System.Drawing.Point(candidate.ReleaseX, candidate.ReleaseY));
         var pointToTextAbove = ShouldPointToTextAbove(candidate, position.Top, physicalButtonSize.Height);
         var style = ResolveFloatingButtonVisualStyle(_settingsService.Current.Ui.FloatingButtonStyle);
@@ -90,7 +90,7 @@ public sealed class OverlayManager
         popup.SetLoading(loadingStateText, loadingBodyText);
 
         var position = _positionService.PositionNearSelection(
-            candidate.Bounds,
+            null,
             popup.Width,
             popup.Height,
             candidate.ReleaseX,
@@ -245,11 +245,6 @@ public sealed class OverlayManager
     private static bool ShouldPointToTextAbove(SelectionCandidate candidate, double buttonTop, double buttonHeight)
     {
         var buttonCenterY = buttonTop + buttonHeight / 2;
-        if (candidate.Bounds is { IsEmpty: false } bounds)
-        {
-            return buttonCenterY > (bounds.Top + bounds.Bottom) / 2;
-        }
-
         return buttonCenterY > candidate.ReleaseY;
     }
 

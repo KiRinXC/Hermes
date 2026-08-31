@@ -6,29 +6,24 @@ namespace Hermes.Windows.Selection;
 public sealed class SelectionCandidateService
 {
     public static readonly TimeSpan CandidateLifetime = TimeSpan.FromSeconds(4);
-    internal static readonly TimeSpan PassivePreReadTimeout = TimeSpan.FromMilliseconds(35);
-    internal static readonly TimeSpan PassiveSensitiveCheckTimeout = TimeSpan.FromMilliseconds(20);
     private static readonly TimeSpan MinimumDragDuration = TimeSpan.FromMilliseconds(80);
     private const double MinimumDragDistance = 10;
 
-    private readonly UiAutomationSelectionProvider _uiAutomationProvider;
     private readonly ForegroundWindowService _foregroundWindowService;
     private readonly SettingsService _settingsService;
     private readonly TriggerDiagnosticsService _diagnosticsService;
 
     public SelectionCandidateService(
-        UiAutomationSelectionProvider uiAutomationProvider,
         ForegroundWindowService foregroundWindowService,
         SettingsService settingsService,
         TriggerDiagnosticsService diagnosticsService)
     {
-        _uiAutomationProvider = uiAutomationProvider;
         _foregroundWindowService = foregroundWindowService;
         _settingsService = settingsService;
         _diagnosticsService = diagnosticsService;
     }
 
-    public async Task<SelectionCandidateDecision> CreateFromMouseGestureAsync(
+    public SelectionCandidateDecision CreateFromMouseGesture(
         int startX,
         int startY,
         int releaseX,
@@ -38,8 +33,7 @@ public sealed class SelectionCandidateService
         TranslationMode mode,
         bool ctrlDownAtStart,
         bool ctrlHeldDuringDrag,
-        bool ctrlDownAtRelease,
-        CancellationToken cancellationToken = default)
+        bool ctrlDownAtRelease)
     {
         if (ShouldIgnoreBeforeEvaluation(ctrlDownAtStart, ctrlHeldDuringDrag, ctrlDownAtRelease))
         {
@@ -59,14 +53,10 @@ public sealed class SelectionCandidateService
             ctrlDownAtStart,
             ctrlHeldDuringDrag,
             ctrlDownAtRelease);
-        var isSensitive = await _foregroundWindowService.IsFocusedElementSensitiveWithinAsync(
-            PassiveSensitiveCheckTimeout,
-            cancellationToken);
         var decision = EvaluateGesture(
             input,
             _settingsService.Current,
-            _foregroundWindowService.IsExcluded(foreground),
-            isSensitive);
+            _foregroundWindowService.IsExcluded(foreground));
 
         if (!decision.ShouldShow || decision.Candidate is null)
         {
@@ -74,41 +64,8 @@ public sealed class SelectionCandidateService
             return decision;
         }
 
-        var preReadTask = _uiAutomationProvider.TryGetSelectionAsync(cancellationToken);
-        var completedTask = await Task.WhenAny(preReadTask, Task.Delay(PassivePreReadTimeout, cancellationToken));
-        if (!ReferenceEquals(completedTask, preReadTask))
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var timeoutAccepted = SelectionCandidateDecision.Accept(decision.Candidate, "gesture-fallback-pending");
-            _diagnosticsService.Record("mouse-selection", "button-shown", foreground, timeoutAccepted.Reason);
-            return timeoutAccepted;
-        }
-
-        var preRead = await preReadTask;
-        if (!preRead.Success)
-        {
-            var fallbackAccepted = SelectionCandidateDecision.Accept(decision.Candidate, "gesture-fallback-pending");
-            _diagnosticsService.Record("mouse-selection", "button-shown", foreground, fallbackAccepted.Reason);
-            return fallbackAccepted;
-        }
-
-        var validation = SelectionTextValidator.Validate(preRead.Text, _settingsService.Current);
-        if (!validation.IsValid)
-        {
-            const string reason = "pre-read-selection-invalid";
-            _diagnosticsService.Record("mouse-selection", "suppressed", foreground, reason);
-            return SelectionCandidateDecision.Reject(reason);
-        }
-
-        var hydratedCandidate = decision.Candidate with
-        {
-            PreReadText = preRead.Text?.Trim(),
-            Bounds = preRead.Bounds
-        };
-
-        var accepted = SelectionCandidateDecision.Accept(hydratedCandidate, "gesture-confidence");
-        _diagnosticsService.Record("mouse-selection", "button-shown", foreground, accepted.Reason);
-        return accepted;
+        _diagnosticsService.Record("mouse-selection", "button-shown", foreground, decision.Reason);
+        return decision;
     }
 
     internal static bool ShouldIgnoreBeforeEvaluation(bool ctrlDownAtStart, bool ctrlHeldDuringDrag, bool ctrlDownAtRelease)
@@ -121,35 +78,10 @@ public sealed class SelectionCandidateService
         return ((now ?? DateTimeOffset.Now) - candidate.CreatedAt) > CandidateLifetime;
     }
 
-    public static bool TryCreatePreReadSelection(
-        SelectionCandidate candidate,
-        AppSettings settings,
-        out SelectionResult selection,
-        out SelectionValidationResult validation,
-        DateTimeOffset? now = null)
-    {
-        selection = SelectionResult.Empty("候选选区已过期。", candidate.ForegroundWindow);
-        validation = SelectionValidationResult.Invalid(selection.Message!);
-
-        if (IsExpired(candidate, now) || string.IsNullOrWhiteSpace(candidate.PreReadText))
-        {
-            return false;
-        }
-
-        selection = SelectionResult.FromText(
-            candidate.PreReadText,
-            SelectionProviderKind.UiAutomation,
-            candidate.Bounds,
-            candidate.ForegroundWindow);
-        validation = SelectionTextValidator.Validate(selection.Text, settings);
-        return validation.IsValid;
-    }
-
     public static SelectionCandidateDecision EvaluateGesture(
         SelectionCandidateInput input,
         AppSettings settings,
-        bool isExcluded,
-        bool isSensitive)
+        bool isExcluded)
     {
         if (!settings.Triggers.AutoShowSelectionButton)
         {
@@ -159,11 +91,6 @@ public sealed class SelectionCandidateService
         if (isExcluded)
         {
             return SelectionCandidateDecision.Reject("foreground-app-excluded");
-        }
-
-        if (isSensitive)
-        {
-            return SelectionCandidateDecision.Reject("sensitive-control");
         }
 
         if (!input.CtrlDownAtStart)
@@ -191,8 +118,6 @@ public sealed class SelectionCandidateService
             input.DragDuration,
             input.ForegroundWindow,
             input.Mode,
-            PreReadText: null,
-            Bounds: null,
             Confidence: confidence);
 
         return SelectionCandidateDecision.Accept(candidate, "gesture-confidence");

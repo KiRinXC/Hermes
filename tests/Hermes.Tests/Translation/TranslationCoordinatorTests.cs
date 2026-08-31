@@ -59,7 +59,7 @@ public static class TranslationCoordinatorTests
 
         TestAssert.False(candidateFlow.Contains("_currentRequestCts = CancellationTokenSource.CreateLinkedTokenSource", StringComparison.Ordinal));
         TestAssert.False(candidateFlow.Contains("_currentRequestCts.Token", StringComparison.Ordinal));
-        TestAssert.Contains("TranslateSelectionAsync(preReadSelection, preReadValidation, candidate.Mode, cancellationToken, popup)", candidateFlow);
+        TestAssert.False(candidateFlow.Contains("TryCreatePreReadSelection", StringComparison.Ordinal));
         TestAssert.Contains("ReadForCandidateTriggerAsync", candidateFlow);
         TestAssert.Contains("candidate.ForegroundWindow", candidateFlow);
     }

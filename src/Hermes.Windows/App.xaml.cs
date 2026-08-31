@@ -42,6 +42,7 @@ public partial class App : System.Windows.Application
     private Task? _automaticUpdateTask;
     private SettingsWindow? _settingsWindow;
     private string? _lastNotifiedUpdateVersion;
+    private bool _passiveUiCloseQueued;
     private bool _paused;
 
     protected override async void OnStartup(StartupEventArgs e)
@@ -115,7 +116,6 @@ public partial class App : System.Windows.Application
         var clipboardSelectionProvider = new ClipboardSelectionProvider(foregroundWindowService, _logger);
         _triggerDiagnosticsService = new TriggerDiagnosticsService();
         var selectionCandidateService = new SelectionCandidateService(
-            uiAutomationProvider,
             foregroundWindowService,
             _settingsService,
             _triggerDiagnosticsService);
@@ -149,18 +149,21 @@ public partial class App : System.Windows.Application
         };
 
         _keyboardHookService = new KeyboardHookService(_logger);
-        _keyboardHookService.UserActivity += (_, _) => _translationCoordinator?.ClosePassiveUi();
-        _keyboardHookService.EscapePressed += (_, _) => _translationCoordinator?.ClosePassiveUi();
+        _keyboardHookService.UserActivity += (_, _) => QueuePassiveUiClose();
+        _keyboardHookService.EscapePressed += (_, _) => QueuePassiveUiClose();
 
         _mouseHookService = new MouseHookService(_logger);
         _mouseHookService.UserActivity += (_, activity) =>
         {
-            if (_overlayManager?.ContainsOverlayPoint(activity.X, activity.Y) == true)
+            _ = Dispatcher.BeginInvoke(() =>
             {
-                return;
-            }
+                if (_overlayManager?.ContainsOverlayPoint(activity.X, activity.Y) == true)
+                {
+                    return;
+                }
 
-            _translationCoordinator?.ClosePassiveUiAfterPointerActivity();
+                _translationCoordinator?.ClosePassiveUiAfterPointerActivity();
+            }, DispatcherPriority.Input);
         };
         _mouseHookService.SelectionGestureCompleted += (_, point) =>
         {
@@ -332,6 +335,21 @@ public partial class App : System.Windows.Application
     private void ShowSettingsWindow()
     {
         ShowSettingsWindow(showGeneral: false);
+    }
+
+    private void QueuePassiveUiClose()
+    {
+        if (_passiveUiCloseQueued)
+        {
+            return;
+        }
+
+        _passiveUiCloseQueued = true;
+        _ = Dispatcher.BeginInvoke(() =>
+        {
+            _passiveUiCloseQueued = false;
+            _translationCoordinator?.ClosePassiveUi();
+        }, DispatcherPriority.Input);
     }
 
     private void ShowUpdateSettingsWindow()

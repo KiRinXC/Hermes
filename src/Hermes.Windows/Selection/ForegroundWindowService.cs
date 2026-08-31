@@ -90,26 +90,6 @@ public sealed class ForegroundWindowService
         return Task.Run(IsFocusedElementSensitive);
     }
 
-    public async Task<bool> IsFocusedElementSensitiveWithinAsync(
-        TimeSpan timeout,
-        CancellationToken cancellationToken = default)
-    {
-        if (cancellationToken.IsCancellationRequested)
-        {
-            return false;
-        }
-
-        var sensitiveTask = IsFocusedElementSensitiveAsync(cancellationToken);
-        var completedTask = await Task.WhenAny(sensitiveTask, Task.Delay(timeout, cancellationToken));
-        if (ReferenceEquals(completedTask, sensitiveTask))
-        {
-            return await sensitiveTask;
-        }
-
-        cancellationToken.ThrowIfCancellationRequested();
-        return false;
-    }
-
     private static string Normalize(string value)
     {
         return value.Trim().EndsWith(".exe", StringComparison.OrdinalIgnoreCase)

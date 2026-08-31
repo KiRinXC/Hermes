@@ -96,7 +96,7 @@ OverlayManager 显示翻译卡片并逐段追加译文
   ↓
 MouseHookService 捕捉选择手势完成
   ↓
-SelectionCandidateService 评估手势并尝试预读候选选区
+SelectionCandidateService 只评估手势并创建无正文候选
   ↓
 OverlayManager 显示悬浮按钮
   ↓
@@ -109,7 +109,7 @@ TranslationCoordinator
 TranslationPopupWindow 显示结果
 ```
 
-被动鼠标路径不执行剪贴板复制，且普通拖选不会进入候选判断或触发诊断记录；只有在鼠标按下前已经长按 Ctrl 或 Alt，并且鼠标按下那一刻仍处于按住状态的拖选，才会继续评估悬浮按钮。鼠标按下后再按 Ctrl/Alt 不会补判为有效手势；一旦起手合法，鼠标和键盘的松开顺序不影响结果。实现上以低级鼠标消息的按下时间为准，同时要求 `GetAsyncKeyState` 确认修饰键当前真实按下，并由低级键盘 hook 的按下-释放时间线确认该状态；仅有遗留的 hook 缓存不能触发普通划词。鼠标释放后只做短暂选区稳定等待，随后候选评估阶段会对敏感控件 UI Automation 检查使用短时间盒，并用更短时间盒预读取选区；如果快速读到文本，则校验并缓存到候选对象，点击按钮后直接使用预读文本；如果 UI Automation 没有暴露选区或预读超时，则仍按手势置信度显示按钮，等用户点击后再走显式触发路径（UI Automation + 受控剪贴板兜底）读取文本。若 UI Automation 明确读到文本但文本不满足校验，则不显示按钮。这样既避免被动路径污染剪贴板，也防止 Zotero、PDF、Electron 或自绘控件等 UI Automation 覆盖较弱的应用拖慢悬浮按钮显示。
+被动鼠标路径不执行 UI Automation 正文读取、剪贴板读取或受控复制，且普通拖选不会进入候选判断或触发诊断记录；只有在鼠标按下前已经长按 Ctrl 或 Alt，并且鼠标按下那一刻仍处于按住状态的拖选，才会继续评估悬浮按钮。鼠标按下后再按 Ctrl/Alt 不会补判为有效手势；一旦起手合法，鼠标和键盘的松开顺序不影响结果。实现上以低级鼠标消息的按下时间为准，同时要求 `GetAsyncKeyState` 确认修饰键当前真实按下，并由低级键盘 hook 的按下-释放时间线确认该状态；仅有遗留的 hook 缓存不能触发普通划词。鼠标释放后只根据手势、前台窗口和释放坐标创建不含正文的候选并显示按钮；用户点击按钮后，才检查敏感控件并走显式触发路径（UI Automation + 受控剪贴板兜底）读取文本。由于被动阶段不再读取选区矩形，悬浮按钮和由它打开的加载卡片先显示在鼠标释放位置附近；快捷键直接触发的卡片仍可使用显式读取返回的选区矩形。这样可以彻底避免后台划词检测与正常复制粘贴争用。
 
 ### 剪贴板翻译
 
@@ -194,7 +194,7 @@ ChatGPT 与 API 档案都以 DPAPI 保存各自的 `config.toml` 模板和完整
 
 ### Input
 
-`HotkeyService` 负责注册全局快捷键。`KeyboardHookService` 和 `MouseHookService` 负责低级输入监听，用于关闭被动 UI、捕捉 Esc、识别鼠标选择手势。`KeyboardHookService` 会缓存 Ctrl/Alt 的按下与释放状态及低级 hook 消息时间，供鼠标起手判定读取；`MouseHookService` 在鼠标左键按下时同时检查物理键状态与 hook 时间线，二者都确认修饰键已按下才跟踪手势，避免 hook 遗留状态让普通划词误触。普通拖选不会进入后续移动/释放阶段的补判。单独按下或松开 Ctrl/Alt 不再作为关闭被动 UI 的用户活动。启动阶段会等通知窗口显示后再注册触发器，避免低级 hook 在 UI 线程初始化繁忙时影响鼠标流畅度。Hook 内不做重计算，只转发事件给协调层。
+`HotkeyService` 负责注册全局快捷键。`KeyboardHookService` 和 `MouseHookService` 负责低级输入监听，用于关闭被动 UI、捕捉 Esc、识别鼠标选择手势。`KeyboardHookService` 会缓存 Ctrl/Alt 的按下与释放状态及低级 hook 消息时间，供鼠标起手判定读取；`MouseHookService` 在鼠标左键按下时同时检查物理键状态与 hook 时间线，二者都确认修饰键已按下才跟踪手势，避免 hook 遗留状态让普通划词误触。普通拖选不会进入后续移动/释放阶段的补判。单独按下或松开 Ctrl/Alt 不再作为关闭被动 UI 的用户活动。启动阶段会等通知窗口显示后再注册触发器，避免低级 hook 在 UI 线程初始化繁忙时影响鼠标流畅度。Hook 内只记录键态并转发事件；关闭悬浮 UI 等 WPF 操作通过 Dispatcher 异步排队并合并重复请求，确保 `Ctrl+C` / `Ctrl+V` 能先交给目标应用处理。
 
 ### Selection
 
@@ -202,9 +202,9 @@ ChatGPT 与 API 档案都以 DPAPI 保存各自的 `config.toml` 模板和完整
 
 - `UiAutomationSelectionProvider` 通过 Windows UI Automation 读取当前选区，读取工作运行在后台线程，避免点击悬浮翻译按钮时卡住 WPF UI 线程。
 - `ClipboardSelectionProvider` 在显式触发时使用受控复制或读取剪贴板文本；受控复制通过私有探针和 `GetClipboardSequenceNumber` 验证本次复制确实写入新内容，最多等待 350ms，并始终尝试恢复原剪贴板。剪贴板操作运行在专用 STA 线程，不通过主 Dispatcher 执行 `Ctrl+C` 和剪贴板读写。
-- `ForegroundWindowService` 判断前台窗口、排除应用和敏感控件，并校验候选窗口在显式复制前没有变化；被动划词按钮路径中的敏感控件检查使用短时间盒，避免慢 UI Automation 控件拖住按钮显示。
+- `ForegroundWindowService` 判断前台窗口、排除应用和敏感控件，并校验候选窗口在显式读取/复制前没有变化；敏感控件检查也延迟到用户明确触发翻译之后。
 - `SelectionTextValidator` 根据语言、长度和设置校验文本。
-- `SelectionOrchestrator` 决定显式触发、被动鼠标和剪贴板翻译时的读取策略。
+- `SelectionOrchestrator` 决定快捷键/按钮显式触发和托盘剪贴板翻译时的读取策略；被动鼠标阶段不再经过选区读取编排。
 
 ### Overlay
 
@@ -255,7 +255,7 @@ ChatGPT 与 API 档案都以 DPAPI 保存各自的 `config.toml` 模板和完整
 
 ### Tests
 
-`tests/Hermes.Tests` 是轻量控制台测试套件，覆盖设置、脱敏、选区校验、选择候选、UI Automation 预读失败/超时手势兜底、受控剪贴板新鲜度与目标窗口约束、被动路径敏感控件检查时间盒、快捷键解析、鼠标 Ctrl/Alt 起手物理键与 hook 双重门控、启动触发器延迟注册、启动通知点击设置、设置窗口选项文案和值映射、设置/弹窗边缘缩放与尺寸持久化约束、外观页悬浮按钮五点尺寸选择器对齐与主题预览、外观页浮窗字号五点选择器、设置/弹窗滚动条主题样式、通知点击后的设置窗抬前逻辑、历史/诊断清理、OpenAI 与 Transmart 响应解析、加载态通道显示、悬浮按钮清晰度和去重约束、翻译卡片拖拽/外部点击关闭入口、多卡片事件隔离约束、弹窗 Markdown 渲染回归、UI 字重约束，以及 Apps 注册表、Codex TOML/auth 识别、配置递归合并、浏览器登录配置与 CLI 定位、登录取消/Job Object/事务恢复入口、进程来源分类、认证路由清理、rollout + 权威 SQLite 同步、Velopack 启动顺序与发行 feed 等逻辑。WPF 可视交互、真实浏览器 OAuth、强制终止恢复和跨版本自动更新仍需要真实发行包试用补充验证。
+`tests/Hermes.Tests` 是轻量控制台测试套件，覆盖设置、脱敏、选区校验、无正文选择候选、被动路径不读取 UI Automation/剪贴板、受控剪贴板新鲜度与目标窗口约束、Hook UI 工作异步转发、快捷键解析、鼠标 Ctrl/Alt 起手物理键与 hook 双重门控、启动触发器延迟注册、启动通知点击设置、设置窗口选项文案和值映射、设置/弹窗边缘缩放与尺寸持久化约束、外观页悬浮按钮五点尺寸选择器对齐与主题预览、外观页浮窗字号五点选择器、设置/弹窗滚动条主题样式、通知点击后的设置窗抬前逻辑、历史/诊断清理、OpenAI 与 Transmart 响应解析、加载态通道显示、悬浮按钮清晰度和去重约束、翻译卡片拖拽/外部点击关闭入口、多卡片事件隔离约束、弹窗 Markdown 渲染回归、UI 字重约束，以及 Apps 注册表、Codex TOML/auth 识别、配置递归合并、浏览器登录配置与 CLI 定位、登录取消/Job Object/事务恢复入口、进程来源分类、认证路由清理、rollout + 权威 SQLite 同步、Velopack 启动顺序与发行 feed 等逻辑。WPF 可视交互、真实浏览器 OAuth、强制终止恢复和跨版本自动更新仍需要真实发行包试用补充验证。
 
 ## 打包策略
 
@@ -296,15 +296,15 @@ powershell -ExecutionPolicy Bypass -File scripts\Publish-Hermes.ps1
 对外 GitHub Release 从 v0.4.0 起采用 Velopack 1.2.0 生成核心 Setup、full/delta nupkg 与 win feed。仓库通过 `.config\dotnet-tools.json` 固定 `vpk` 版本；脚本仍先覆盖固定 self-contained manual-test 目录，再把 Velopack 的完整中间资产写入持久 feed 目录以便后续生成 delta。公开的 `Hermes-win-Setup.exe` 是一个原生轻量引导层：先把旧 `%LOCALAPPDATA%\Hermes\` 中明确列出的用户数据复制到独立目录，再解出并启动内嵌的 Velopack Setup；这可保护同版本覆盖安装时尚未来得及由新程序迁移的数据，正常安装交互保持不变。对外版本目录只包含该安装器、full/delta nupkg、`releases.win.json` 与 SHA256 清单。GitHub Release 以 Setup 作为唯一面向用户的安装入口，不发布 portable ZIP；nupkg 和 release feed 仅供应用内更新使用：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\Package-HermesRelease.ps1 -Version 0.4.0
+powershell -ExecutionPolicy Bypass -File scripts\Package-HermesRelease.ps1 -Version 0.4.1
 ```
 
 输出目录：
 
 ```text
-artifacts\release\v0.4.0\
+artifacts\release\v0.4.1\
 ├─ Hermes-win-Setup.exe
-├─ Hermes-0.4.0-full.nupkg
+├─ Hermes-0.4.1-full.nupkg
 ├─ releases.win.json
 └─ checksums.txt
 ```
@@ -369,7 +369,7 @@ Windows 卸载由 Velopack 删除完整程序目录，默认不触碰独立数�
 设计原则：
 
 - 不自动上传未被用户明确触发的文本。
-- 被动鼠标路径不执行剪贴板复制。
+- 被动鼠标路径不读取选区正文、不读取剪贴板，也不执行受控复制；这些动作只在快捷键、悬浮按钮或托盘菜单的明确操作后发生。
 - API Key 不写入普通设置文件。
 - Codex auth、OAuth token、API Key 和备份清单不写入普通设置或日志；DPAPI 档案只能由创建它的 Windows 用户解密，每台电脑需单独初始化。
 - 日志默认不记录完整原文和译文。
@@ -378,7 +378,7 @@ Windows 卸载由 Velopack 删除完整程序目录，默认不触碰独立数�
 ## 已知限制
 
 - UI Automation 在浏览器、PDF、Electron、自绘编辑器中的行为不完全一致。
-- 自动悬浮按钮在 UI Automation 预读失败时会使用手势兜底显示，但仍无法保证所有应用都能出现按钮或复制到选区文本。
+- 自动悬浮按钮只根据手势显示在鼠标附近，不再通过 UI Automation 预读验证正文；因此无有效文本时也可能显示按钮，点击后会给出明确提示，且仍无法保证所有应用都能复制到选区文本。
 - 当前没有完整历史列表 UI，仅保留高级页清空历史动作。
 - 设置窗口的 Mica 背景依赖 Windows 11 DWM 能力；在不支持的系统或透明窗口组合受限时会退回内置深色背景。
 - 真实多显示器、高 DPI、不同应用兼容性需要持续人工试用。
@@ -391,6 +391,8 @@ Windows 卸载由 Velopack 删除完整程序目录，默认不触碰独立数�
 
 | 日期 | 变更 | 影响范围 |
 | --- | --- | --- |
+| 2026-08-31 | 发布 v0.4.1：提升程序集与打包默认版本，新增复制粘贴争用修复 Release Notes，并生成可供已安装 v0.4.0 通过 GitHub Releases feed 检测、下载和重启安装的 Velopack 更新资产。 | Release / Packaging / Documentation / Update |
+| 2026-08-31 | 修复正常复制粘贴可能受 Hermes 后台路径干扰的问题：被动划词阶段删除 UI Automation 正文预读、敏感控件查询和候选文本缓存，只记录手势/窗口/位置；选区与剪贴板正文仅在快捷键、点击悬浮按钮或托盘翻译剪贴板后读取。键鼠低级 Hook 触发的 WPF 关闭工作改为 Dispatcher 异步合并，避免在 `Ctrl+C` / `Ctrl+V` 输入链路中同步执行 UI 操作。 | Input / Selection / Translation / Overlay / Privacy / Tests / 文档维护 |
 | 2026-08-15 | 保留 v0.4.0 一键安装，不再引入自定义安装目录：将用户数据从 Velopack 程序目录迁移到 `%LOCALAPPDATA%\KiRinXC\Hermes\`，正常卸载只删除程序；常规页新增程序/数据路径、打开目录和经二次确认的“删除数据并退出”；公开 Setup 增加原生数据保护引导层，在同版本覆盖旧目录前复制设置、密钥、历史及 Codex 档案，首实例再完成迁移清理。 | Infrastructure / Settings / Shell / Uninstall / Migration / Setup / UI / Tests / Documentation |
 | 2026-08-14 | 将 v0.4.0 对外发行入口统一为 `Hermes-win-Setup.exe`：发行目录和 GitHub Release 不再包含 portable ZIP，只保留安装程序、应用内更新所需的 full/delta nupkg、`releases.win.json` 与校验文件。 | Release / Packaging / Documentation / Tests |
 | 2026-08-14 | 将软件更新交互收敛为卡片右侧单按钮：按钮沿用“测试连接”样式执行检查，最新版与错误在卡片内就地反馈；发现新版后同一按钮切换为蓝色“更新”，点击即开始保存、下载、退出安装与自动重启，并移除更新弹窗。 | Release / Shell / UI / Accessibility / Tests / 文档维护 |
